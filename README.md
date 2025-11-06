@@ -185,3 +185,6 @@ To construct this project, we borrowed codes from: [LIQE](https://github.com/zwx
 
 Thanks for their excellent work!
 > 📌 *If you find this project useful in your research, please consider citing our paper.*
+
+© 2025 The Board of Trustees of the University of Illinois. All Rights Reserved.
+
