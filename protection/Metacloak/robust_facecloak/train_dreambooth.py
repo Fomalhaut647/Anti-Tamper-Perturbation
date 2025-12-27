@@ -16,12 +16,14 @@
 # Modified by Yixin Liu, Lehigh University 2023, with some changes in adversarial attack and defense settings
 
 import requests
+
 # from PIL import Image
 from io import BytesIO
 from diffusers import StableDiffusionUpscalePipeline
 import torch
 from generic.tools import upload_py_code
 from PIL import Image
+
 # from PIL import Image
 import numpy as np
 import argparse
@@ -43,11 +45,18 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DDPMScheduler,
+    DiffusionPipeline,
+    StableDiffusionPipeline,
+    UNet2DConditionModel,
+)
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version
 from diffusers.utils.import_utils import is_xformers_available
 from huggingface_hub import HfFolder, create_repo, whoami
+
 # from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -62,7 +71,9 @@ check_min_version("0.13.0.dev0")
 logger = get_logger(__name__)
 
 
-def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
+def import_model_class_from_model_name_or_path(
+    pretrained_model_name_or_path: str, revision: str
+):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path,
         subfolder="text_encoder",
@@ -75,17 +86,22 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
 
         return CLIPTextModel
     elif model_class == "RobertaSeriesModelWithTransformation":
-        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import RobertaSeriesModelWithTransformation
+        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
+            RobertaSeriesModelWithTransformation,
+        )
 
         return RobertaSeriesModelWithTransformation
     else:
         raise ValueError(f"{model_class} is not supported.")
 
+
 from robust_facecloak.generic.share_args import share_parse_args, add_train_db
+
+
 def parse_args(input_args=None):
     parser = share_parse_args()
     parser = add_train_db(parser)
-    
+
     parser.add_argument(
         "--class_name",
         type=str,
@@ -93,102 +109,86 @@ def parse_args(input_args=None):
         default="face",
         required=False,
     )
-    
+
     parser.add_argument(
         "--eval_gen_img_num",
         type=int,
         default=16,
     )
-    
+
     parser.add_argument(
         "--transform_defense",
         action="store_true",
-        help="Whether to use transform defense."
+        help="Whether to use transform defense.",
     )
-    
+
     parser.add_argument(
-        "--jpeg_transform",
+        "--jpeg_transform", action="store_true", help="Whether to use jpeg defense."
+    )
+
+    parser.add_argument(
+        "--jpeg_quality", type=int, default=75, help="The quality for jpeg defense."
+    )
+
+    parser.add_argument(
+        "--transform_sr",
         action="store_true",
-        help="Whether to use jpeg defense."
+        help="Whether to use super resolution defense.",
     )
-    
-    parser.add_argument(
-        "--jpeg_quality",
-        type=int,
-        default=75,
-        help="The quality for jpeg defense."
-    )
-    
-    parser.add_argument(
-        "--transform_sr", 
-        action="store_true",
-        help="Whether to use super resolution defense."
-    )
-    
+
     parser.add_argument(
         "--sr_scale",
         type=int,
         default=4,
-        help="The scale for super resolution defense."
+        help="The scale for super resolution defense.",
     )
-    
+
     parser.add_argument(
-        "--transform_tvm",
-        action="store_true",
-        help="Whether to use TVM defense."
+        "--transform_tvm", action="store_true", help="Whether to use TVM defense."
     )
-    
+
     parser.add_argument(
-        "--transform_rotate",
-        action="store_true",
-        help="Whether to use rotate defense."
+        "--transform_rotate", action="store_true", help="Whether to use rotate defense."
     )
-    
+
     parser.add_argument(
-        "--rot_degree",
-        type=int,
-        default=4,
-        help="The degree for rotate defense." 
+        "--rot_degree", type=int, default=4, help="The degree for rotate defense."
     )
-    
+
     parser.add_argument(
         "--transform_hflip",
         action="store_true",
-        help="Whether to use horizontal flip defense."
+        help="Whether to use horizontal flip defense.",
     )
-    
+
     parser.add_argument(
         "--transform_gau",
         action="store_true",
-        help="Whether to use gaussian noise defense." 
+        help="Whether to use gaussian noise defense.",
     )
-    
+
     parser.add_argument(
         "--inference_prompts",
         type=str,
         default="A photo of a person",
-        help="A list of prompts for inference."
+        help="A list of prompts for inference.",
     )
 
     parser.add_argument(
         "--gau_kernel_size",
         type=int,
         default=5,
-        help="The kernel size for gaussian noise defense."
+        help="The kernel size for gaussian noise defense.",
     )
-    
+
     parser.add_argument(
-        "--save_model", 
-        action="store_true",
-        help="Whether to save the model."
+        "--save_model", action="store_true", help="Whether to save the model."
     )
-    
+
     parser.add_argument(
-        "--log_score",
-        action="store_true",
-        help="Whether to log the score."
+        "--log_score", action="store_true", help="Whether to log the score."
     )
-    
+
     parser.add_argument(
         "--validation_scheduler",
         type=str,
@@ -196,24 +196,25 @@ def parse_args(input_args=None):
         choices=["DPMSolverMultistepScheduler", "DDPMScheduler"],
         help="Select which scheduler to use for validation. DDPMScheduler is recommended for DeepFloyd IF.",
     )
-    
-    # poison rate 
+
+    # poison rate
     parser.add_argument(
-        "--poison_rate",
-        type=float,
-        default=1.0,
-        help="The poison rate for training."
+        "--poison_rate", type=float, default=1.0, help="The poison rate for training."
     )
-    
+
     # clean_img_dir
-    parser.add_argument("--clean_img_dir",type=str, default=None, help="The clean image dir for training.")
-    
-  
+    parser.add_argument(
+        "--clean_img_dir",
+        type=str,
+        default=None,
+        help="The clean image dir for training.",
+    )
+
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
         args = parser.parse_args()
-        
+
     config_and_condition_checking(args)
 
     return args
@@ -234,8 +235,8 @@ class DreamBoothDataset(Dataset):
         class_prompt=None,
         size=512,
         center_crop=False,
-        defense_transforms = [], 
-        args=None
+        defense_transforms=[],
+        args=None,
     ):
         self.args = args
         self.size = size
@@ -244,7 +245,9 @@ class DreamBoothDataset(Dataset):
 
         self.instance_data_root = Path(instance_data_root)
         if not self.instance_data_root.exists():
-            raise ValueError(f"Instance {self.instance_data_root} images root doesn't exists.")
+            raise ValueError(
+                f"Instance {self.instance_data_root} images root doesn't exists."
+            )
 
         # filter out non-image files
         instance_data = []
@@ -255,16 +258,16 @@ class DreamBoothDataset(Dataset):
             # except:
             #     pass
             # only load those images with png and jpg format
-            if file.suffix in ['.png', '.jpg']:
+            if file.suffix in [".png", ".jpg"]:
                 instance_data.append(file)
-                
+
         # poison_rate
         # clean_img_dir
         if self.args.poison_rate < 1.0:
             clean_instance_data = []
             for file in Path(self.args.clean_img_dir).iterdir():
                 # only load those images with png and jpg format
-                if file.suffix in ['.png', '.jpg']:
+                if file.suffix in [".png", ".jpg"]:
                     clean_instance_data.append(file)
             # 1 - poison_rate % of instance will be replaced by clean instance
             clean_num = int(len(instance_data) * (1 - self.args.poison_rate))
@@ -272,11 +275,11 @@ class DreamBoothDataset(Dataset):
             clean_num = min(clean_num, len(clean_instance_data))
             # replace the first clean_num instance with clean instance
             instance_data[:clean_num] = clean_instance_data[:clean_num]
-        
+
         self.instance_images_path = list(
             # Path(instance_data_root).iterdir()
             instance_data
-            )
+        )
         self.num_instance_images = len(self.instance_images_path)
         self.instance_prompt = instance_prompt
         self._length = self.num_instance_images
@@ -289,7 +292,7 @@ class DreamBoothDataset(Dataset):
             class_data = []
             for file in self.class_data_root.iterdir():
                 #  only load those images with png and jpg format
-                if file.suffix in ['.png', '.jpg']:
+                if file.suffix in [".png", ".jpg"]:
                     class_data.append(file)
             self.class_images_path = class_data
             self.num_class_images = len(self.class_images_path)
@@ -300,34 +303,46 @@ class DreamBoothDataset(Dataset):
 
         self.image_transforms_for_instances = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
-            ] + defense_transforms + [
+                transforms.Resize(
+                    size, interpolation=transforms.InterpolationMode.BILINEAR
+                ),
+                transforms.CenterCrop(size)
+                if center_crop
+                else transforms.RandomCrop(size),
+            ]
+            + defense_transforms
+            + [
                 transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5]),]
-            
+                transforms.Normalize([0.5], [0.5]),
+            ]
         )
         self.image_transforms_for_class_imgs = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.Resize(
+                    size, interpolation=transforms.InterpolationMode.BILINEAR
+                ),
+                transforms.CenterCrop(size)
+                if center_crop
+                else transforms.RandomCrop(size),
                 transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5]),]
-            
+                transforms.Normalize([0.5], [0.5]),
+            ]
         )
         self.instance_image = []
-        
+
         if self.args.transform_sr or self.args.transform_tvm:
             # load model and scheduler
             model_id = "stabilityai/stable-diffusion-x4-upscaler"
             sr_pipeline = StableDiffusionUpscalePipeline.from_pretrained(
-                model_id, revision="fp16",torch_dtype=torch.float16) 
+                model_id, revision="fp16", torch_dtype=torch.float16
+            )
 
             self.sr_pipeline = sr_pipeline.to("cuda")
 
         if self.args.transform_tvm:
-            
+
             import cvxpy as cp
+
             def get_tvm_image(img, TVM_WEIGHT=0.01, PIXEL_DROP_RATE=0.02):
                 # TVM_WEIGHT = 0.01
                 # PIXEL_DROP_RATE = 0.02
@@ -336,37 +351,45 @@ class DreamBoothDataset(Dataset):
                 # img = Image.open(path)  # Replace with your image path
                 # reshape the image to 32*32
                 img = img.resize((64, 64), Image.ANTIALIAS)
-                img_array = np.asarray(img, dtype=np.float32) / 255.0  # Convert to numpy array and normalize to [0, 1]
+                img_array = (
+                    np.asarray(img, dtype=np.float32) / 255.0
+                )  # Convert to numpy array and normalize to [0, 1]
 
                 def total_variation(Z, shape, p=2):
                     h, w, c = shape
-                    Z_reshaped = cp.reshape(Z, (h, w*c))
-                    
+                    Z_reshaped = cp.reshape(Z, (h, w * c))
+
                     # Compute the Horizontal Differences and their p-norm
                     horizontal_diff = Z_reshaped[1:, :] - Z_reshaped[:-1, :]
-                    horizontal_norm = cp.norm(horizontal_diff, p, axis=1)  # axis may need to be adjusted based on the requirement
+                    horizontal_norm = cp.norm(
+                        horizontal_diff, p, axis=1
+                    )  # axis may need to be adjusted based on the requirement
                     horizontal_sum = cp.sum(horizontal_norm)
-                    
+
                     # Compute the Vertical Differences and their p-norm
                     vertical_diff = Z_reshaped[:, 1:] - Z_reshaped[:, :-1]
-                    vertical_norm = cp.norm(vertical_diff, p, axis=0)  # axis may need to be adjusted based on the requirement
+                    vertical_norm = cp.norm(
+                        vertical_diff, p, axis=0
+                    )  # axis may need to be adjusted based on the requirement
                     vertical_sum = cp.sum(vertical_norm)
-                    
+
                     # Total Variation is the sum of all norms
                     tv = horizontal_sum + vertical_sum
-                    
+
                     return tv
 
                 def minimize_total_variation(X, x, lambda_tv=TVM_WEIGHT, p=2):
                     h, w, c = x.shape
-                    Z = cp.Variable((h, w*c))
-                    X_flat = np.reshape(X, (h, w*c))
-                    x_flat = np.reshape(x, (h, w*c))
-                    objective = cp.Minimize(cp.norm(cp.multiply((1 - X_flat),(Z - x_flat)),  2) + lambda_tv * total_variation(Z, (h, w, c), p))
+                    Z = cp.Variable((h, w * c))
+                    X_flat = np.reshape(X, (h, w * c))
+                    x_flat = np.reshape(x, (h, w * c))
+                    objective = cp.Minimize(
+                        cp.norm(cp.multiply((1 - X_flat), (Z - x_flat)), 2)
+                        + lambda_tv * total_variation(Z, (h, w, c), p)
+                    )
                     problem = cp.Problem(objective)
-                    problem.solve(verbose=True,solver=cp.MOSEK)
+                    problem.solve(verbose=True, solver=cp.MOSEK)
                     return Z.value
-
 
                 # Generate the mask matrix X using Bernoulli distribution
                 X = np.random.binomial(1, PIXEL_DROP_RATE, img_array.shape)
@@ -377,49 +400,56 @@ class DreamBoothDataset(Dataset):
                 # reshape back to 64*64
                 Z_optimal = np.reshape(Z_optimal, img_array.shape)
 
-
                 # If needed, convert the result back to a PIL Imagepip install mosek
-                img_result = Image.fromarray(np.uint8(Z_optimal*255))
+                img_result = Image.fromarray(np.uint8(Z_optimal * 255))
                 img_result
                 return img_result
-            
-        
+
         # instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
         for img_i_dir in self.instance_images_path:
-            prompt="A photo of a person"
+            prompt = "A photo of a person"
             instance_image = Image.open(img_i_dir)
             if not instance_image.mode == "RGB":
                 instance_image = instance_image.convert("RGB")
             # consider some defenses like jpeg compression
             if self.args.jpeg_transform:
-                instance_image = jpeg_compress_image(instance_image, self.args.jpeg_quality)
+                instance_image = jpeg_compress_image(
+                    instance_image, self.args.jpeg_quality
+                )
             if self.args.transform_sr:
                 instance_image = instance_image.resize((128, 128))
-                instance_image = self.sr_pipeline(image=instance_image,prompt=prompt, ).images[0]
+                instance_image = self.sr_pipeline(
+                    image=instance_image,
+                    prompt=prompt,
+                ).images[0]
             if self.args.transform_tvm:
                 instance_image = get_tvm_image(instance_image)
                 # one sr to [256, 256]
-                instance_image = self.sr_pipeline(image=instance_image,prompt=prompt, ).images[0]
+                instance_image = self.sr_pipeline(
+                    image=instance_image,
+                    prompt=prompt,
+                ).images[0]
                 # another resie to [128, 128]
                 instance_image = instance_image.resize((128, 128))
                 # another sr to [512, 512]
-                instance_image = self.sr_pipeline(image=instance_image,prompt=prompt, ).images[0]
-                
+                instance_image = self.sr_pipeline(
+                    image=instance_image,
+                    prompt=prompt,
+                ).images[0]
+
             self.instance_image.append(instance_image)
-        
+
         if self.args.transform_sr or self.args.transform_tvm:
             del self.sr_pipeline
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-
-            
 
     def __len__(self):
         return self._length
 
     def __getitem__(self, index):
         example = {}
-        instance_image= self.instance_image[index % self.num_instance_images]
+        instance_image = self.instance_image[index % self.num_instance_images]
         example["instance_images"] = self.image_transforms_for_instances(instance_image)
         example["instance_prompt_ids"] = self.tokenizer(
             self.instance_prompt,
@@ -430,7 +460,9 @@ class DreamBoothDataset(Dataset):
         ).input_ids
 
         if self.class_data_root:
-            class_image = Image.open(self.class_images_path[index % self.num_class_images])
+            class_image = Image.open(
+                self.class_images_path[index % self.num_class_images]
+            )
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms_for_class_imgs(class_image)
@@ -484,7 +516,9 @@ class PromptDataset(Dataset):
         return example
 
 
-def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
+def get_full_repo_name(
+    model_id: str, organization: Optional[str] = None, token: Optional[str] = None
+):
     if token is None:
         token = HfFolder.get_token()
     if organization is None:
@@ -494,7 +528,9 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
         return f"{organization}/{model_id}"
 
 
-def infer(checkpoint_path, prompts=None, n_img=16, bs=8, n_steps=100, guidance_scale=7.5):
+def infer(
+    checkpoint_path, prompts=None, n_img=16, bs=8, n_steps=100, guidance_scale=7.5
+):
     pipe = StableDiffusionPipeline.from_pretrained(
         checkpoint_path, torch_dtype=torch.bfloat16, safety_checker=None
     ).to("cuda")
@@ -542,7 +578,11 @@ def main(args):
     # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
     # This will be enabled soon in accelerate. For now, we don't allow gradient accumulation when training two models.
     # TODO (patil-suraj): Remove this check when gradient accumulation with two models is enabled in accelerate.
-    if args.train_text_encoder and args.gradient_accumulation_steps > 1 and accelerator.num_processes > 1:
+    if (
+        args.train_text_encoder
+        and args.gradient_accumulation_steps > 1
+        and accelerator.num_processes > 1
+    ):
         raise ValueError(
             "Gradient accumulation is not supported when training the text encoder in distributed training. "
             "Please set gradient_accumulation_steps to 1. This feature will be supported in the future."
@@ -576,7 +616,9 @@ def main(args):
         cur_class_images = len(list(class_images_dir.iterdir()))
 
         if cur_class_images < args.num_class_images:
-            torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
+            torch_dtype = (
+                torch.float16 if accelerator.device.type == "cuda" else torch.float32
+            )
             if args.prior_generation_precision == "fp32":
                 torch_dtype = torch.float32
             elif args.prior_generation_precision == "fp16":
@@ -597,7 +639,9 @@ def main(args):
             logger.info(f"Number of class images to sample: {num_new_images}.")
 
             sample_dataset = PromptDataset(args.class_prompt, num_new_images)
-            sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size)
+            sample_dataloader = torch.utils.data.DataLoader(
+                sample_dataset, batch_size=args.sample_batch_size
+            )
 
             sample_dataloader = accelerator.prepare(sample_dataloader)
             pipeline.to(accelerator.device)
@@ -611,7 +655,10 @@ def main(args):
 
                 for i, image in enumerate(images):
                     hash_image = hashlib.sha1(image.tobytes()).hexdigest()
-                    image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                    image_filename = (
+                        class_images_dir
+                        / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                    )
                     image.save(image_filename)
 
             del pipeline
@@ -622,7 +669,9 @@ def main(args):
     if accelerator.is_main_process:
         if args.push_to_hub:
             if args.hub_model_id is None:
-                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
+                repo_name = get_full_repo_name(
+                    Path(args.output_dir).name, token=args.hub_token
+                )
             else:
                 repo_name = args.hub_model_id
             create_repo(repo_name, exist_ok=True, token=args.hub_token)
@@ -637,7 +686,9 @@ def main(args):
 
     # Load the tokenizer
     if args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, revision=args.revision, use_fast=False)
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.tokenizer_name, revision=args.revision, use_fast=False
+        )
     elif args.pretrained_model_name_or_path:
         tokenizer = AutoTokenizer.from_pretrained(
             args.pretrained_model_name_or_path,
@@ -647,16 +698,22 @@ def main(args):
         )
 
     # import correct text encoder class
-    text_encoder_cls = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path, args.revision)
+    text_encoder_cls = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision
+    )
 
     # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    noise_scheduler = DDPMScheduler.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="scheduler"
+    )
     text_encoder = text_encoder_cls.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="text_encoder",
         revision=args.revision,
     )
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision
+    )
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
@@ -669,7 +726,9 @@ def main(args):
         if is_xformers_available():
             unet.enable_xformers_memory_efficient_attention()
         else:
-            raise ValueError("xformers is not available. Make sure it is installed correctly")
+            raise ValueError(
+                "xformers is not available. Make sure it is installed correctly"
+            )
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
@@ -687,7 +746,10 @@ def main(args):
             f"Unet loaded as datatype {accelerator.unwrap_model(unet).dtype}. {low_precision_error_string}"
         )
 
-    if args.train_text_encoder and accelerator.unwrap_model(text_encoder).dtype != torch.float32:
+    if (
+        args.train_text_encoder
+        and accelerator.unwrap_model(text_encoder).dtype != torch.float32
+    ):
         raise ValueError(
             f"Text encoder loaded as datatype {accelerator.unwrap_model(text_encoder).dtype}."
             f" {low_precision_error_string}"
@@ -700,7 +762,10 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+            args.learning_rate
+            * args.gradient_accumulation_steps
+            * args.train_batch_size
+            * accelerator.num_processes
         )
 
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
@@ -712,13 +777,16 @@ def main(args):
                 "To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`."
             )
         from bitsandbytes.optim import AdamW8bit
+
         optimizer_class = AdamW8bit
     else:
         optimizer_class = torch.optim.AdamW
 
     # Optimizer creation
     params_to_optimize = (
-        itertools.chain(unet.parameters(), text_encoder.parameters()) if args.train_text_encoder else unet.parameters()
+        itertools.chain(unet.parameters(), text_encoder.parameters())
+        if args.train_text_encoder
+        else unet.parameters()
     )
     optimizer = optimizer_class(
         params_to_optimize,
@@ -731,30 +799,26 @@ def main(args):
     defense_transforms = []
     if args.transform_defense:
         import torchvision.transforms as T
-        
-        gaussianBlurrer = T.GaussianBlur(kernel_size=args.gau_kernel_size,)
+
+        gaussianBlurrer = T.GaussianBlur(
+            kernel_size=args.gau_kernel_size,
+        )
         hflipper = T.RandomHorizontalFlip(p=0.5)
         rotater = T.RandomRotation(degrees=(0, args.rot_degree))
-        defense_transforms=[
-            # gaussianBlurrer, 
-            # hflipper, 
+        defense_transforms = [
+            # gaussianBlurrer,
+            # hflipper,
             # rotater
         ]
         if args.transform_rotate:
-            defense_transforms.append(
-                rotater
-            )
-        
+            defense_transforms.append(rotater)
+
         if args.transform_gau:
-            defense_transforms.append(
-                gaussianBlurrer
-            )
-    
+            defense_transforms.append(gaussianBlurrer)
+
         if args.transform_hflip:
-            defense_transforms.append(
-                hflipper
-            )
-            
+            defense_transforms.append(hflipper)
+
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
@@ -765,7 +829,7 @@ def main(args):
         size=args.resolution,
         center_crop=args.center_crop,
         defense_transforms=defense_transforms,
-        args=args
+        args=args,
     )
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -788,17 +852,23 @@ def main(args):
     # Move vae and text_encoder to device and cast to weight_dtype
     if not args.train_text_encoder:
         text_encoder.to(accelerator.device, dtype=weight_dtype)
-        
+
     latents_cache = []
     text_encoder_cache = []
     for batch in tqdm(train_dataloader, desc="Caching latents"):
         with torch.no_grad():
-            batch["pixel_values"] = batch["pixel_values"].to(accelerator.device, non_blocking=True, dtype=weight_dtype)
-            batch["input_ids"] = batch["input_ids"].to(accelerator.device, non_blocking=True)
+            batch["pixel_values"] = batch["pixel_values"].to(
+                accelerator.device, non_blocking=True, dtype=weight_dtype
+            )
+            batch["input_ids"] = batch["input_ids"].to(
+                accelerator.device, non_blocking=True
+            )
             # latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
-            model_input = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist
+            model_input = vae.encode(
+                batch["pixel_values"].to(dtype=weight_dtype)
+            ).latent_dist
             # .sample()
-            model_input = model_input 
+            model_input = model_input
             # * vae.config.scaling_factor
             latents_cache.append(model_input)
             if args.train_text_encoder:
@@ -806,7 +876,9 @@ def main(args):
             else:
                 text_encoder_cache.append(text_encoder(batch["input_ids"])[0])
     train_dataset = LatentsDataset(latents_cache, text_encoder_cache)
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=1, collate_fn=lambda x: x, shuffle=True)
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=1, collate_fn=lambda x: x, shuffle=True
+    )
     scaling_factor = vae.config.scaling_factor
     del vae
     if torch.cuda.is_available():
@@ -814,7 +886,9 @@ def main(args):
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(
+        len(train_dataloader) / args.gradient_accumulation_steps
+    )
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
@@ -836,16 +910,18 @@ def main(args):
             optimizer,
             train_dataloader,
             lr_scheduler,
-        ) = accelerator.prepare(unet, text_encoder, optimizer, train_dataloader, lr_scheduler)
+        ) = accelerator.prepare(
+            unet, text_encoder, optimizer, train_dataloader, lr_scheduler
+        )
     else:
         unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
             unet, optimizer, train_dataloader, lr_scheduler
         )
 
-    
-
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(
+        len(train_dataloader) / args.gradient_accumulation_steps
+    )
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
@@ -854,17 +930,27 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers(args.wandb_project_name, config=vars(args), init_kwargs={"wandb": {"entity": args.wandb_entity_name}})
+        accelerator.init_trackers(
+            args.wandb_project_name,
+            config=vars(args),
+            init_kwargs={"wandb": {"entity": args.wandb_entity_name}},
+        )
 
     # Train!
-    total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+    total_batch_size = (
+        args.train_batch_size
+        * accelerator.num_processes
+        * args.gradient_accumulation_steps
+    )
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Num batches each epoch = {len(train_dataloader)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
-    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
+    logger.info(
+        f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}"
+    )
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
     global_step = 0
@@ -893,7 +979,9 @@ def main(args):
 
             resume_global_step = global_step * args.gradient_accumulation_steps
             first_epoch = global_step // num_update_steps_per_epoch
-            resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
+            resume_step = resume_global_step % (
+                num_update_steps_per_epoch * args.gradient_accumulation_steps
+            )
 
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(
@@ -908,7 +996,11 @@ def main(args):
             text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             # Skip steps until we reach the resumed step
-            if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
+            if (
+                args.resume_from_checkpoint
+                and epoch == first_epoch
+                and step < resume_step
+            ):
                 if step % args.gradient_accumulation_steps == 0:
                     progress_bar.update(1)
                 continue
@@ -942,8 +1034,10 @@ def main(args):
                     encoder_hidden_states = batch[0][1]
 
                 # Predict the noise residual
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
-                
+                model_pred = unet(
+                    noisy_latents, timesteps, encoder_hidden_states
+                ).sample
+
                 if model_pred.shape[1] == 6:
                     model_pred, _ = torch.chunk(model_pred, 2, dim=1)
 
@@ -953,7 +1047,9 @@ def main(args):
                 elif noise_scheduler.config.prediction_type == "v_prediction":
                     target = noise_scheduler.get_velocity(latents, noise, timesteps)
                 else:
-                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+                    raise ValueError(
+                        f"Unknown prediction type {noise_scheduler.config.prediction_type}"
+                    )
 
                 if args.with_prior_preservation:
                     # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
@@ -961,15 +1057,21 @@ def main(args):
                     target, target_prior = torch.chunk(target, 2, dim=0)
 
                     # Compute instance loss
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                    loss = F.mse_loss(
+                        model_pred.float(), target.float(), reduction="mean"
+                    )
 
                     # Compute prior loss
-                    prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
+                    prior_loss = F.mse_loss(
+                        model_pred_prior.float(), target_prior.float(), reduction="mean"
+                    )
 
                     # Add the prior loss to the instance loss.
                     loss = loss + args.prior_loss_weight * prior_loss
                 else:
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                    loss = F.mse_loss(
+                        model_pred.float(), target.float(), reduction="mean"
+                    )
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -989,7 +1091,9 @@ def main(args):
                 global_step += 1
 
                 if global_step == args.max_train_steps and accelerator.is_main_process:
-                    save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                    save_path = os.path.join(
+                        args.output_dir, f"checkpoint-{global_step}"
+                    )
                     ckpt_pipeline = DiffusionPipeline.from_pretrained(
                         args.pretrained_model_name_or_path,
                         unet=accelerator.unwrap_model(unet),
@@ -1006,13 +1110,22 @@ def main(args):
                             variance_type = "fixed_small"
 
                         scheduler_args["variance_type"] = variance_type
-                    ckpt_pipeline.scheduler = ckpt_pipeline.scheduler.from_config(ckpt_pipeline.scheduler.config, **scheduler_args)
+                    ckpt_pipeline.scheduler = ckpt_pipeline.scheduler.from_config(
+                        ckpt_pipeline.scheduler.config, **scheduler_args
+                    )
                     ckpt_pipeline.save_pretrained(save_path)
-                    unet.cpu(); text_encoder.cpu(); 
+                    unet.cpu()
+                    text_encoder.cpu()
                     del ckpt_pipeline, unet, text_encoder
                     if len(args.inference_prompts) > 0:
                         prompts = args.inference_prompts.split(";")
-                        infer(save_path, prompts, n_img=args.eval_gen_img_num, bs=1, n_steps=100)
+                        infer(
+                            save_path,
+                            prompts,
+                            n_img=args.eval_gen_img_num,
+                            bs=1,
+                            n_steps=100,
+                        )
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -1028,11 +1141,12 @@ def main(args):
         print("Finish training")
         final_save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
         if args.log_score:
-            
+
             from eval_score import get_score
+
             clean_ref_db = args.clean_ref_db
             prompts = args.inference_prompts.split(";")
-            
+
             # prompt = prompts[-1]
             if len(prompts) > 1:
                 prompt2scorelist = {}
@@ -1040,19 +1154,18 @@ def main(args):
                 for prompt in prompts:
                     pbar.update(1)
                     pid = prompt.lower().replace(",", "").replace(" ", "_")
-                    im_dir = os.path.join(
-                        final_save_path,'dreambooth', pid
-                    )
+                    im_dir = os.path.join(final_save_path, "dreambooth", pid)
                     res = get_score(
                         im_dir,
                         clean_ref_db,
                         type_name=args.class_name,
                     )
                     prompt2scorelist[pid] = res
-                    
+
                     for i, images in enumerate(os.listdir(im_dir)):
-                        
+
                         import numpy as np
+
                         # check if the image is valid
                         if not images.endswith(".png"):
                             continue
@@ -1066,32 +1179,39 @@ def main(args):
                         for tracker in accelerator.trackers:
                             if tracker.name == "wandb":
                                 import wandb
-                                tracker.log({prompt: wandb.Image(image_array, caption=str(i)+": "+pid)})
-                    
-                
+
+                                tracker.log(
+                                    {
+                                        prompt: wandb.Image(
+                                            image_array, caption=str(i) + ": " + pid
+                                        )
+                                    }
+                                )
+
                 pbar.close()
                 for tracker in accelerator.trackers:
                     if tracker.name == "wandb":
                         # tracker.log(res_dict)
                         tracker.log(prompt2scorelist)
-                        # log a mean 
+                        # log a mean
                         prompt_list = list(prompt2scorelist.keys())
                         k_list = list(prompt2scorelist[prompt_list[0]].keys())
                         for k in k_list:
                             means = []
                             for prompt in prompt_list:
                                 means.append(prompt2scorelist[prompt][k])
-                            tracker.log({k+"_mean": np.mean(means)})
+                            tracker.log({k + "_mean": np.mean(means)})
                             stds = []
                             for prompt in prompt_list:
                                 stds.append(prompt2scorelist[prompt][k])
-                            tracker.log({k+"_std": np.std(stds)})
+                            tracker.log({k + "_std": np.std(stds)})
 
         if not args.save_model:
             # delete all the checkpoints expect for the generated images
             for file in os.listdir(final_save_path):
                 if file != "dreambooth":
                     import shutil
+
                     # all file and directory
                     file_path = os.path.join(final_save_path, file)
                     if os.path.isfile(file_path):
@@ -1103,9 +1223,8 @@ def main(args):
             f.write("finished")
     accelerator.end_training()
 
-   
-    
+
 if __name__ == "__main__":
     args = parse_args()
-    
+
     main(args)

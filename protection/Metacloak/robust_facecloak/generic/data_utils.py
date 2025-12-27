@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 
 
-
 class PromptDataset(Dataset):
     "A simple dataset to prepare the prompts to generate class images on multiple GPUs."
 
@@ -24,12 +23,16 @@ class PromptDataset(Dataset):
         return example
 
 
-def load_data(data_dir,):
+def load_data(
+    data_dir,
+):
     import numpy as np
+
     def image_to_numpy(image):
         return np.array(image).astype(np.uint8)
+
     # more robust loading to avoid loaing non-image files
-    images = [] 
+    images = []
     for i in list(Path(data_dir).iterdir()):
         if not i.suffix in [".jpg", ".png", ".jpeg"]:
             continue
@@ -44,22 +47,21 @@ def load_data(data_dir,):
     assert images.shape[-1] == images.shape[-2]
     return images
 
-    
-    
+
 from PIL import Image
 from io import BytesIO
+
 
 def jpeg_compress_image(image: Image.Image, quality: int = 85) -> Image.Image:
     """
     Compresses the input PIL Image object using JPEG compression and returns
     a new PIL Image object of the compressed image.
-    
+
     :param image: PIL Image object to be compressed.
     :param quality: JPEG compression quality. Ranges from 0 to 95.
     :return: New PIL Image object of the compressed image.
     """
     compressed_image_io = BytesIO()
-    image.save(compressed_image_io, 'JPEG', quality=quality)
+    image.save(compressed_image_io, "JPEG", quality=quality)
     compressed_image_io.seek(0)  # Reset the stream position to the beginning.
     return Image.open(compressed_image_io)
-

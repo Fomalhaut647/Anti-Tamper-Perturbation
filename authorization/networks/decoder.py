@@ -8,17 +8,17 @@ class Decoder(nn.Module):
     The input image may have various kinds of noise applied to it,
     such as Crop, JpegCompression, and so on. See Noise layers for more.
     """
-    def __init__(self,message_length = 30):
+
+    def __init__(self, message_length=30):
 
         super(Decoder, self).__init__()
         self.channels = 64
         self.num_blocks = 7
-        
+
         layers = [ConvBNRelu(3, self.channels)]
         for _ in range(self.num_blocks - 1):
             layers.append(ConvBNRelu(self.channels, self.channels))
 
-        
         layers.append(ConvBNRelu(self.channels, message_length))
 
         layers.append(nn.AdaptiveAvgPool2d(output_size=(1, 1)))

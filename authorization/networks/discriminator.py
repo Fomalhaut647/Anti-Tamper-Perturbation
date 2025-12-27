@@ -1,16 +1,18 @@
 import torch.nn as nn
 from networks.utils import ConvBNRelu
 
+
 class Discriminator(nn.Module):
     """
     Discriminator network. Receives an image and has to figure out whether it has a watermark inserted into it, or not.
     """
+
     def __init__(self):
         super(Discriminator, self).__init__()
         discriminator_channels = 64
         layers = [ConvBNRelu(3, discriminator_channels)]
         discriminator_blocks = 3
-        for _ in range(discriminator_blocks-1):
+        for _ in range(discriminator_blocks - 1):
             layers.append(ConvBNRelu(discriminator_channels, discriminator_channels))
 
         layers.append(nn.AdaptiveAvgPool2d(output_size=(1, 1)))
