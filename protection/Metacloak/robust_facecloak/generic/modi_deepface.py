@@ -190,12 +190,17 @@ def verify(
             img2_representation = img2_embedding_obj[0]["embedding"]
 
             if distance_metric == "cosine":
-                distance = dst.findCosineDistance(img1_representation, img2_representation)
+                distance = dst.findCosineDistance(
+                    img1_representation, img2_representation
+                )
             elif distance_metric == "euclidean":
-                distance = dst.findEuclideanDistance(img1_representation, img2_representation)
+                distance = dst.findEuclideanDistance(
+                    img1_representation, img2_representation
+                )
             elif distance_metric == "euclidean_l2":
                 distance = dst.findEuclideanDistance(
-                    dst.l2_normalize(img1_representation), dst.l2_normalize(img2_representation)
+                    dst.l2_normalize(img1_representation),
+                    dst.l2_normalize(img2_representation),
                 )
             else:
                 raise ValueError("Invalid distance_metric passed - ", distance_metric)
@@ -335,35 +340,49 @@ def analyze(
                     img_gray = cv2.resize(img_gray, (48, 48))
                     img_gray = np.expand_dims(img_gray, axis=0)
 
-                    emotion_predictions = models["emotion"].predict(img_gray, verbose=0)[0, :]
+                    emotion_predictions = models["emotion"].predict(
+                        img_gray, verbose=0
+                    )[0, :]
 
                     sum_of_predictions = emotion_predictions.sum()
 
                     obj["emotion"] = {}
 
                     for i, emotion_label in enumerate(Emotion.labels):
-                        emotion_prediction = 100 * emotion_predictions[i] / sum_of_predictions
+                        emotion_prediction = (
+                            100 * emotion_predictions[i] / sum_of_predictions
+                        )
                         obj["emotion"][emotion_label] = emotion_prediction
 
-                    obj["dominant_emotion"] = Emotion.labels[np.argmax(emotion_predictions)]
+                    obj["dominant_emotion"] = Emotion.labels[
+                        np.argmax(emotion_predictions)
+                    ]
 
                 elif action == "age":
-                    age_predictions = models["age"].predict(img_content, verbose=0)[0, :]
+                    age_predictions = models["age"].predict(img_content, verbose=0)[
+                        0, :
+                    ]
                     apparent_age = Age.findApparentAge(age_predictions)
                     # int cast is for exception - object of type 'float32' is not JSON serializable
                     obj["age"] = int(apparent_age)
 
                 elif action == "gender":
-                    gender_predictions = models["gender"].predict(img_content, verbose=0)[0, :]
+                    gender_predictions = models["gender"].predict(
+                        img_content, verbose=0
+                    )[0, :]
                     obj["gender"] = {}
                     for i, gender_label in enumerate(Gender.labels):
                         gender_prediction = 100 * gender_predictions[i]
                         obj["gender"][gender_label] = gender_prediction
 
-                    obj["dominant_gender"] = Gender.labels[np.argmax(gender_predictions)]
+                    obj["dominant_gender"] = Gender.labels[
+                        np.argmax(gender_predictions)
+                    ]
 
                 elif action == "race":
-                    race_predictions = models["race"].predict(img_content, verbose=0)[0, :]
+                    race_predictions = models["race"].predict(img_content, verbose=0)[
+                        0, :
+                    ]
                     sum_of_predictions = race_predictions.sum()
 
                     obj["race"] = {}
@@ -437,23 +456,22 @@ def find_without_savepkl(
     # ---------------------------------------
     # import time
     # random_timestamp = str(time.time()).replace(".", "")
-    
+
     # if ckpt:
     file_name = f"representations_{model_name}.pkl"
     file_name = file_name.replace("-", "_").lower()
-        
-        
+
     # file_name = f"representations_{model_name}_{random_timestamp}.pkl"
     # file_name = file_name.replace("-", "_").lower()
 
     if path.exists(db_path + "/" + file_name):
 
-    #     if not silent:
-    #         print(
-    #             f"WARNING: Representations for images in {db_path} folder were previously stored"
-    #             + f" in {file_name}. If you added new instances after the creation, then please "
-    #             + "delete this file and call find function again. It will create it again."
-    #         )
+        #     if not silent:
+        #         print(
+        #             f"WARNING: Representations for images in {db_path} folder were previously stored"
+        #             + f" in {file_name}. If you added new instances after the creation, then please "
+        #             + "delete this file and call find function again. It will create it again."
+        #         )
 
         with open(f"{db_path}/{file_name}", "rb") as f:
             representations = pickle.load(f)
@@ -534,7 +552,9 @@ def find_without_savepkl(
 
     # ----------------------------
     # now, we got representations for facial database
-    df = pd.DataFrame(representations, columns=["identity", f"{model_name}_representation"])
+    df = pd.DataFrame(
+        representations, columns=["identity", f"{model_name}_representation"]
+    )
 
     # img path might have more than once face
     target_objs = functions.extract_faces(
@@ -571,9 +591,13 @@ def find_without_savepkl(
             source_representation = instance[f"{model_name}_representation"]
 
             if distance_metric == "cosine":
-                distance = dst.findCosineDistance(source_representation, target_representation)
+                distance = dst.findCosineDistance(
+                    source_representation, target_representation
+                )
             elif distance_metric == "euclidean":
-                distance = dst.findEuclideanDistance(source_representation, target_representation)
+                distance = dst.findEuclideanDistance(
+                    source_representation, target_representation
+                )
             elif distance_metric == "euclidean_l2":
                 distance = dst.findEuclideanDistance(
                     dst.l2_normalize(source_representation),
@@ -734,7 +758,8 @@ def stream(
 
     if time_threshold < 1:
         raise ValueError(
-            "time_threshold must be greater than the value 1 but you passed " + str(time_threshold)
+            "time_threshold must be greater than the value 1 but you passed "
+            + str(time_threshold)
         )
 
     if frame_threshold < 1:
@@ -823,7 +848,11 @@ def extract_faces(
 
 
 def detectFace(
-    img_path, target_size=(224, 224), detector_backend="opencv", enforce_detection=True, align=True
+    img_path,
+    target_size=(224, 224),
+    detector_backend="opencv",
+    enforce_detection=True,
+    align=True,
 ):
     print("⚠️ Function detectFace is deprecated! Use extract_faces instead of this.")
 

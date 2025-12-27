@@ -1,7 +1,5 @@
-
 import torch
 import torch.nn.functional as F
-
 
 
 def pgd_attack(
@@ -40,14 +38,18 @@ def pgd_attack(
 
     for step in range(num_steps):
         perturbed_images.requires_grad = True
-        latents = vae.encode(perturbed_images.to(device, dtype=weight_dtype)).latent_dist.sample()
+        latents = vae.encode(
+            perturbed_images.to(device, dtype=weight_dtype)
+        ).latent_dist.sample()
         latents = latents * vae.config.scaling_factor
 
         # Sample noise that we'll add to the latents
         noise = torch.randn_like(latents)
         bsz = latents.shape[0]
         # Sample a random timestep for each image
-        timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+        timesteps = torch.randint(
+            0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device
+        )
         timesteps = timesteps.long()
         # Add noise to the latents according to the noise magnitude at each timestep
         # (this is the forward diffusion process)
@@ -65,7 +67,9 @@ def pgd_attack(
         elif noise_scheduler.config.prediction_type == "v_prediction":
             target = noise_scheduler.get_velocity(latents, noise, timesteps)
         else:
-            raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+            raise ValueError(
+                f"Unknown prediction type {noise_scheduler.config.prediction_type}"
+            )
 
         unet.zero_grad()
         text_encoder.zero_grad()
@@ -96,4 +100,3 @@ def pgd_attack(
         perturbed_images = torch.clamp(original_images + eta, min=-1, max=+1).detach_()
         # print(f"PGD loss - step {step}, loss: {loss.detach().item()}")
     return perturbed_images
-

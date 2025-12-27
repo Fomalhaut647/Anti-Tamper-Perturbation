@@ -31,7 +31,10 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers
-from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor
+from diffusers.models.attention_processor import (
+    CustomDiffusionAttnProcessor,
+    CustomDiffusionXFormersAttnProcessor,
+)
 from diffusers.optimization import get_scheduler
 from diffusers.utils.import_utils import is_xformers_available
 
@@ -44,7 +47,9 @@ def freeze_params(params):
         param.requires_grad = False
 
 
-def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
+def import_model_class_from_model_name_or_path(
+    pretrained_model_name_or_path: str, revision: str
+):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path,
         subfolder="text_encoder",
@@ -57,11 +62,14 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
 
         return CLIPTextModel
     elif model_class == "RobertaSeriesModelWithTransformation":
-        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import RobertaSeriesModelWithTransformation
+        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
+            RobertaSeriesModelWithTransformation,
+        )
 
         return RobertaSeriesModelWithTransformation
     else:
         raise ValueError(f"{model_class} is not supported.")
+
 
 class PromptDataset(Dataset):
     "A simple dataset to prepare the prompts to generate class images on multiple GPUs."
@@ -110,7 +118,9 @@ class CustomDiffusionDataset(Dataset):
         self.with_prior_preservation = with_prior_preservation
         for concept in concepts_list:
             inst_img_path = [
-                (x, concept["instance_prompt"]) for x in Path(concept["instance_data_dir"]).iterdir() if x.is_file()
+                (x, concept["instance_prompt"])
+                for x in Path(concept["instance_data_dir"]).iterdir()
+                if x.is_file()
             ]
             self.instance_images_path.extend(inst_img_path)
 
@@ -118,14 +128,18 @@ class CustomDiffusionDataset(Dataset):
                 class_data_root = Path(concept["class_data_dir"])
                 if os.path.isdir(class_data_root):
                     class_images_path = list(class_data_root.iterdir())
-                    class_prompt = [concept["class_prompt"] for _ in range(len(class_images_path))]
+                    class_prompt = [
+                        concept["class_prompt"] for _ in range(len(class_images_path))
+                    ]
                 else:
                     with open(class_data_root, "r") as f:
                         class_images_path = f.read().splitlines()
                     with open(concept["class_prompt"], "r") as f:
                         class_prompt = f.read().splitlines()
 
-                class_img_path = [(x, y) for (x, y) in zip(class_images_path, class_prompt)]
+                class_img_path = [
+                    (x, y) for (x, y) in zip(class_images_path, class_prompt)
+                ]
                 self.class_images_path.extend(class_img_path[:num_class_images])
 
         random.shuffle(self.instance_images_path)
@@ -137,8 +151,12 @@ class CustomDiffusionDataset(Dataset):
         self.image_transforms = transforms.Compose(
             [
                 self.flip,
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.Resize(
+                    size, interpolation=transforms.InterpolationMode.BILINEAR
+                ),
+                transforms.CenterCrop(size)
+                if center_crop
+                else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
             ]
@@ -152,7 +170,9 @@ class CustomDiffusionDataset(Dataset):
         factor = self.size // self.mask_size
         if scale > self.size:
             outer, inner = scale, self.size
-        top, left = np.random.randint(0, outer - inner + 1), np.random.randint(0, outer - inner + 1)
+        top, left = np.random.randint(0, outer - inner + 1), np.random.randint(
+            0, outer - inner + 1
+        )
         image = image.resize((scale, scale), resample=resample)
         image = np.array(image).astype(np.uint8)
         image = (image / 127.5 - 1.0).astype(np.float32)
@@ -164,13 +184,16 @@ class CustomDiffusionDataset(Dataset):
         else:
             instance_image[top : top + inner, left : left + inner, :] = image
             mask[
-                top // factor + 1 : (top + scale) // factor - 1, left // factor + 1 : (left + scale) // factor - 1
+                top // factor + 1 : (top + scale) // factor - 1,
+                left // factor + 1 : (left + scale) // factor - 1,
             ] = 1.0
         return instance_image, mask
 
     def __getitem__(self, index):
         example = {}
-        instance_image, instance_prompt = self.instance_images_path[index % self.num_instance_images]
+        instance_image, instance_prompt = self.instance_images_path[
+            index % self.num_instance_images
+        ]
         instance_image = Image.open(instance_image)
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
@@ -184,12 +207,18 @@ class CustomDiffusionDataset(Dataset):
                 if np.random.uniform() < 0.66
                 else np.random.randint(int(1.2 * self.size), int(1.4 * self.size))
             )
-        instance_image, mask = self.preprocess(instance_image, random_scale, self.interpolation)
+        instance_image, mask = self.preprocess(
+            instance_image, random_scale, self.interpolation
+        )
 
         if random_scale < 0.6 * self.size:
-            instance_prompt = np.random.choice(["a far away ", "very small "]) + instance_prompt
+            instance_prompt = (
+                np.random.choice(["a far away ", "very small "]) + instance_prompt
+            )
         elif random_scale > self.size:
-            instance_prompt = np.random.choice(["zoomed in ", "close up "]) + instance_prompt
+            instance_prompt = (
+                np.random.choice(["zoomed in ", "close up "]) + instance_prompt
+            )
 
         example["instance_images"] = torch.from_numpy(instance_image).permute(2, 0, 1)
         example["mask"] = torch.from_numpy(mask)
@@ -202,7 +231,9 @@ class CustomDiffusionDataset(Dataset):
         ).input_ids
 
         if self.with_prior_preservation:
-            class_image, class_prompt = self.class_images_path[index % self.num_class_images]
+            class_image, class_prompt = self.class_images_path[
+                index % self.num_class_images
+            ]
             class_image = Image.open(class_image)
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
@@ -217,7 +248,6 @@ class CustomDiffusionDataset(Dataset):
             ).input_ids
 
         return example
-
 
 
 def parse_args(input_args=None):
@@ -290,7 +320,7 @@ def parse_args(input_args=None):
         "--prior_loss_weight",
         type=float,
         default=1.0,
-        help="The weight of prior preservation loss."
+        help="The weight of prior preservation loss.",
     )
     parser.add_argument(
         "--num_class_images",
@@ -308,10 +338,7 @@ def parse_args(input_args=None):
         help="The output directory.",
     )
     parser.add_argument(
-        "--seed",
-        type=int,
-        default=1042,
-        help="A seed for reproducible training."
+        "--seed", type=int, default=1042, help="A seed for reproducible training."
     )
     parser.add_argument(
         "--resolution",
@@ -332,7 +359,10 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--sample_batch_size", type=int, default=4, help="Batch size (per device) for sampling images."
+        "--sample_batch_size",
+        type=int,
+        default=4,
+        help="Batch size (per device) for sampling images.",
     )
     parser.add_argument(
         "--max_train_steps",
@@ -392,16 +422,40 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+        "--lr_warmup_steps",
+        type=int,
+        default=500,
+        help="Number of steps for the warmup in the lr scheduler.",
     )
     parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+        "--use_8bit_adam",
+        action="store_true",
+        help="Whether or not to use 8-bit Adam from bitsandbytes.",
     )
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
-    parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
+    parser.add_argument(
+        "--adam_beta1",
+        type=float,
+        default=0.9,
+        help="The beta1 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_beta2",
+        type=float,
+        default=0.999,
+        help="The beta2 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use."
+    )
+    parser.add_argument(
+        "--adam_epsilon",
+        type=float,
+        default=1e-08,
+        help="Epsilon value for the Adam optimizer",
+    )
+    parser.add_argument(
+        "--max_grad_norm", default=1.0, type=float, help="Max gradient norm."
+    )
     parser.add_argument(
         "--hub_model_id",
         type=str,
@@ -461,9 +515,16 @@ def parse_args(input_args=None):
         default=None,
         help="Path to json containing multiple concepts, will overwrite parameters like instance_prompt, class_prompt, etc.",
     )
-    parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
+        "--local_rank",
+        type=int,
+        default=-1,
+        help="For distributed training: local_rank",
+    )
+    parser.add_argument(
+        "--enable_xformers_memory_efficient_attention",
+        action="store_true",
+        help="Whether or not to use xformers.",
     )
     parser.add_argument(
         "--set_grads_to_none",
@@ -475,9 +536,14 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--initializer_token", type=str, default="ktn+pll+ucd", help="A token to use as initializer word."
+        "--initializer_token",
+        type=str,
+        default="ktn+pll+ucd",
+        help="A token to use as initializer word.",
     )
-    parser.add_argument("--hflip", action="store_true", help="Apply horizontal flip data augmentation.")
+    parser.add_argument(
+        "--hflip", action="store_true", help="Apply horizontal flip data augmentation."
+    )
     parser.add_argument(
         "--noaug",
         action="store_true",
@@ -506,9 +572,13 @@ def parse_args(input_args=None):
     else:
         # logger is not available yet
         if args.class_data_dir is not None:
-            warnings.warn("You need not use --class_data_dir without --with_prior_preservation.")
+            warnings.warn(
+                "You need not use --class_data_dir without --with_prior_preservation."
+            )
         if args.class_prompt is not None:
-            warnings.warn("You need not use --class_prompt without --with_prior_preservation.")
+            warnings.warn(
+                "You need not use --class_prompt without --with_prior_preservation."
+            )
 
     return args
 
@@ -516,14 +586,15 @@ def parse_args(input_args=None):
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
-    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
+    accelerator_project_config = ProjectConfiguration(
+        project_dir=args.output_dir, logging_dir=logging_dir
+    )
 
     accelerator = Accelerator(
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
-
 
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -567,7 +638,11 @@ def main(args):
             cur_class_images = len(list(class_images_dir.iterdir()))
 
             if cur_class_images < args.num_class_images:
-                torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
+                torch_dtype = (
+                    torch.float16
+                    if accelerator.device.type == "cuda"
+                    else torch.float32
+                )
                 if args.prior_generation_precision == "fp32":
                     torch_dtype = torch.float32
                 elif args.prior_generation_precision == "fp16":
@@ -586,7 +661,9 @@ def main(args):
                 logger.info(f"Number of class images to sample: {num_new_images}.")
 
                 sample_dataset = PromptDataset(args.class_prompt, num_new_images)
-                sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size)
+                sample_dataloader = torch.utils.data.DataLoader(
+                    sample_dataset, batch_size=args.sample_batch_size
+                )
 
                 sample_dataloader = accelerator.prepare(sample_dataloader)
                 pipeline.to(accelerator.device)
@@ -601,7 +678,8 @@ def main(args):
                     for i, image in enumerate(images):
                         hash_image = hashlib.sha1(image.tobytes()).hexdigest()
                         image_filename = (
-                            class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                            class_images_dir
+                            / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                         )
                         image.save(image_filename)
 
@@ -628,18 +706,25 @@ def main(args):
         )
 
     # import correct text encoder class
-    text_encoder_cls = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path, args.revision)
+    text_encoder_cls = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision
+    )
 
     # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    text_encoder = text_encoder_cls.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+    noise_scheduler = DDPMScheduler.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="scheduler"
     )
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
+    text_encoder = text_encoder_cls.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=args.revision,
+    )
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision
+    )
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
-
 
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
@@ -669,7 +754,9 @@ def main(args):
                 )
             attention_class = CustomDiffusionXFormersAttnProcessor
         else:
-            raise ValueError("xformers is not available. Make sure it is installed correctly")
+            raise ValueError(
+                "xformers is not available. Make sure it is installed correctly"
+            )
 
     # now we will add new Custom Diffusion weights to the attention layers
     # It's important to realize here how many attention weights will be added and of which sizes
@@ -692,7 +779,11 @@ def main(args):
     st = unet.state_dict()
 
     for name, _ in unet.attn_processors.items():
-        cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
+        cross_attention_dim = (
+            None
+            if name.endswith("attn1.processor")
+            else unet.config.cross_attention_dim
+        )
         if name.startswith("mid_block"):
             hidden_size = unet.config.block_out_channels[-1]
         elif name.startswith("up_blocks"):
@@ -708,8 +799,12 @@ def main(args):
         }
         if train_q_out:
             weights["to_q_custom_diffusion.weight"] = st[layer_name + ".to_q.weight"]
-            weights["to_out_custom_diffusion.0.weight"] = st[layer_name + ".to_out.0.weight"]
-            weights["to_out_custom_diffusion.0.bias"] = st[layer_name + ".to_out.0.bias"]
+            weights["to_out_custom_diffusion.0.weight"] = st[
+                layer_name + ".to_out.0.weight"
+            ]
+            weights["to_out_custom_diffusion.0.bias"] = st[
+                layer_name + ".to_out.0.bias"
+            ]
         if cross_attention_dim is not None:
             custom_diffusion_attn_procs[name] = attention_class(
                 train_kv=train_kv,
@@ -727,12 +822,10 @@ def main(args):
             )
     del st
 
-
     unet.set_attn_processor(custom_diffusion_attn_procs)
     custom_diffusion_layers = AttnProcsLayers(unet.attn_processors)
 
     accelerator.register_for_checkpointing(custom_diffusion_layers)
-
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
@@ -774,7 +867,9 @@ def main(args):
         with_prior_preservation=args.with_prior_preservation,
         size=args.resolution,
         mask_size=vae.encode(
-            torch.randn(1, 3, args.resolution, args.resolution).to(dtype=weight_dtype).to(accelerator.device)
+            torch.randn(1, 3, args.resolution, args.resolution)
+            .to(dtype=weight_dtype)
+            .to(accelerator.device)
         )
         .latent_dist.sample()
         .size()[-1],
@@ -784,16 +879,17 @@ def main(args):
         aug=not args.noaug,
     )
 
-
     # Prepare for PGD
-    pertubed_images = [Image.open(i[0]).convert("RGB") for i in train_dataset.instance_images_path]
+    pertubed_images = [
+        Image.open(i[0]).convert("RGB") for i in train_dataset.instance_images_path
+    ]
     pertubed_images_ = [train_dataset.image_transforms(i) for i in pertubed_images]
     pertubed_images = torch.stack(pertubed_images_).contiguous()
     # pertubed_images.requires_grad_()
 
     original_images = pertubed_images.clone().detach()
     original_images.requires_grad_(False)
-    
+
     original_images = pertubed_images.clone().detach()
     original_images.requires_grad_(False)
     pertubed_images = pertubed_images.to(accelerator.device)
@@ -812,16 +908,22 @@ def main(args):
             random_scale = (
                 np.random.randint(train_dataset.size // 3, train_dataset.size + 1)
                 if np.random.uniform() < 0.66
-                else np.random.randint(int(1.2 * train_dataset.size), int(1.4 * train_dataset.size))
+                else np.random.randint(
+                    int(1.2 * train_dataset.size), int(1.4 * train_dataset.size)
+                )
             )
-        _, one_mask = train_dataset.preprocess(image, random_scale, train_dataset.interpolation)
+        _, one_mask = train_dataset.preprocess(
+            image, random_scale, train_dataset.interpolation
+        )
         one_mask = torch.from_numpy(one_mask)
         if args.with_prior_preservation:
             class_mask = torch.ones_like(one_mask)
             one_mask += class_mask
         return one_mask
 
-    images_open_list = [Image.open(i[0]).convert("RGB") for i in train_dataset.instance_images_path]
+    images_open_list = [
+        Image.open(i[0]).convert("RGB") for i in train_dataset.instance_images_path
+    ]
     mask_list = []
     for image in images_open_list:
         mask_list.append(get_one_mask(image))
@@ -831,18 +933,18 @@ def main(args):
     mask = mask.unsqueeze(1)
     del images_open_list
 
-
     if args.input_config is not None:
         import yaml
+
         def load_config(config_file):
-            with open(config_file, 'r') as f:
+            with open(config_file, "r") as f:
                 config = yaml.safe_load(f)
             return config
+
         config = load_config(args.input_config)
-        random_mask = torch.load(config['mask'])
-        random_mask = 1-random_mask
+        random_mask = torch.load(config["mask"])
+        random_mask = 1 - random_mask
         random_mask = random_mask.to(accelerator.device)
-        
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
@@ -851,10 +953,21 @@ def main(args):
         num_training_steps=args.max_train_steps * accelerator.num_processes,
     )
 
-    custom_diffusion_layers, optimizer, pertubed_images, lr_scheduler, original_images, mask = accelerator.prepare(
-        custom_diffusion_layers, optimizer, pertubed_images, lr_scheduler, original_images, mask
+    (
+        custom_diffusion_layers,
+        optimizer,
+        pertubed_images,
+        lr_scheduler,
+        original_images,
+        mask,
+    ) = accelerator.prepare(
+        custom_diffusion_layers,
+        optimizer,
+        pertubed_images,
+        lr_scheduler,
+        original_images,
+        mask,
     )
-
 
     # Train!
     logger.info("***** Running training *****")
@@ -865,7 +978,10 @@ def main(args):
     first_epoch = 0
 
     # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
+    progress_bar = tqdm(
+        range(global_step, args.max_train_steps),
+        disable=not accelerator.is_local_main_process,
+    )
     progress_bar.set_description("Steps")
     for epoch in range(first_epoch, args.max_train_steps):
         unet.train()
@@ -873,7 +989,9 @@ def main(args):
             with accelerator.accumulate(unet), accelerator.accumulate(text_encoder):
                 # Convert images to latent space
                 pertubed_images.requires_grad = True
-                latents = vae.encode(pertubed_images.to(accelerator.device).to(dtype=weight_dtype)).latent_dist.sample()
+                latents = vae.encode(
+                    pertubed_images.to(accelerator.device).to(dtype=weight_dtype)
+                ).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
 
                 # Sample noise that we'll add to the latents
@@ -881,7 +999,12 @@ def main(args):
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
                 # timesteps = torch.randint(noise_scheduler.config.num_train_timesteps//4, 1000-noise_scheduler.config.num_train_timesteps//4, (bsz,), device=latents.device)
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                timesteps = torch.randint(
+                    0,
+                    noise_scheduler.config.num_train_timesteps,
+                    (bsz,),
+                    device=latents.device,
+                )
                 # torch.save(timesteps,'./%d_%d.pt'%(noise_scheduler.config.num_train_timesteps,epoch))
                 timesteps = timesteps.long()
 
@@ -890,10 +1013,14 @@ def main(args):
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                encoder_hidden_states = text_encoder(input_ids.to(accelerator.device))[0]
+                encoder_hidden_states = text_encoder(input_ids.to(accelerator.device))[
+                    0
+                ]
 
                 # Predict the noise residual
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                model_pred = unet(
+                    noisy_latents, timesteps, encoder_hidden_states
+                ).sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -901,7 +1028,9 @@ def main(args):
                 elif noise_scheduler.config.prediction_type == "v_prediction":
                     target = noise_scheduler.get_velocity(latents, noise, timesteps)
                 else:
-                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+                    raise ValueError(
+                        f"Unknown prediction type {noise_scheduler.config.prediction_type}"
+                    )
 
                 # unet.zero_grad()
                 # text_encoder.zero_grad()
@@ -912,28 +1041,32 @@ def main(args):
                     target, target_prior = torch.chunk(target, 2, dim=0)
                     mask = torch.chunk(mask, 2, dim=0)[0].to(accelerator.device)
                     # Compute instance loss
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                    loss = F.mse_loss(
+                        model_pred.float(), target.float(), reduction="none"
+                    )
                     loss = ((loss * mask).sum([1, 2, 3]) / mask.sum([1, 2, 3])).mean()
 
                     # Compute prior loss
-                    prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
+                    prior_loss = F.mse_loss(
+                        model_pred_prior.float(), target_prior.float(), reduction="mean"
+                    )
 
                     # Add the prior loss to the instance loss.
                     loss = loss + args.prior_loss_weight * prior_loss
                 else:
                     mask = mask.to(accelerator.device)
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")  # torch.Size([5, 4, 64, 64])
+                    loss = F.mse_loss(
+                        model_pred.float(), target.float(), reduction="none"
+                    )  # torch.Size([5, 4, 64, 64])
 
-                    #loss = ((loss * mask).sum([1, 2, 3]) / mask.sum([1, 2, 3])).mean()
+                    # loss = ((loss * mask).sum([1, 2, 3]) / mask.sum([1, 2, 3])).mean()
                     loss = loss.mean()
 
                 accelerator.backward(loss)
 
                 # print(loss.item())
                 if accelerator.sync_gradients:
-                    params_to_clip = (
-                        custom_diffusion_layers.parameters()
-                    )
+                    params_to_clip = custom_diffusion_layers.parameters()
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
 
                 alpha = args.alpha
@@ -943,25 +1076,37 @@ def main(args):
                     # print(pertubed_images.device)
                     adv_images = pertubed_images + alpha * pertubed_images.grad.sign()
                     eta = torch.clamp(adv_images - original_images, min=-eps, max=+eps)
-                    pertubed_images = torch.clamp(original_images + eta, min=-1, max=+1).detach_()
+                    pertubed_images = torch.clamp(
+                        original_images + eta, min=-1, max=+1
+                    ).detach_()
                 else:
                     # pertubed_images = pertubed_images.to(accelerator.device)
                     def zero_low_frequencies(x):
                         x_dct = dct_img(x)
                         x_dct *= random_mask
-                        x_idct = idct_img(float(config['CAAT']['step_size'])*x_dct.sign())
+                        x_idct = idct_img(
+                            float(config["CAAT"]["step_size"]) * x_dct.sign()
+                        )
                         return x_idct
+
                     grad = zero_low_frequencies(pertubed_images.grad)
                     with torch.no_grad():
                         adv_images = pertubed_images + grad
-                    
+
                     adv_images_dct = dct_img(adv_images)
                     original_images_dct = dct_img(original_images)
-                    
-                    eps= float(config['CAAT']['radius'])
+
+                    eps = float(config["CAAT"]["radius"])
                     # print(eps)
-                    eta = torch.clamp(adv_images_dct - original_images_dct, min=-eps, max=+eps)*random_mask
-                    pertubed_images =  torch.clamp(idct_img(original_images_dct + eta), min=-1, max=+1).detach_()
+                    eta = (
+                        torch.clamp(
+                            adv_images_dct - original_images_dct, min=-eps, max=+eps
+                        )
+                        * random_mask
+                    )
+                    pertubed_images = torch.clamp(
+                        idct_img(original_images_dct + eta), min=-1, max=+1
+                    ).detach_()
                 optimizer.step()
 
                 lr_scheduler.step()
@@ -978,15 +1123,22 @@ def main(args):
                         os.makedirs(save_folder, exist_ok=True)
                         noised_imgs = pertubed_images.detach()
                         img_names = [
-                            str(instance_path[0]).split("/")[-1] for instance_path in train_dataset.instance_images_path
+                            str(instance_path[0]).split("/")[-1]
+                            for instance_path in train_dataset.instance_images_path
                         ]
                         for img_pixel, img_name in zip(noised_imgs, img_names):
-                            save_path = os.path.join(save_folder, f"{global_step}_noise_{img_name}")
+                            save_path = os.path.join(
+                                save_folder, f"{global_step}_noise_{img_name}"
+                            )
                             Image.fromarray(
-                                (img_pixel * 127.5 + 128).clamp(0, 255).to(torch.uint8).permute(1, 2, 0).cpu().numpy()
+                                (img_pixel * 127.5 + 128)
+                                .clamp(0, 255)
+                                .to(torch.uint8)
+                                .permute(1, 2, 0)
+                                .cpu()
+                                .numpy()
                             ).save(save_path)
                         print(f"Saved noise at step {global_step} to {save_folder}")
-
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -997,23 +1149,35 @@ def main(args):
 
     accelerator.end_training()
 
+
 from torch_dct import dct as tdct
 from torch_dct import idct as tidct
-def dct_img(x,norm='ortho'):
+
+
+def dct_img(x, norm="ortho"):
     # print(x.shape)
     x = block_splitting(x)
     length = len(x.shape)
-    tdct_x = tdct(tdct(x, norm=norm).transpose(length-2, length-1), norm=norm).transpose(length-2, length-1)
+    tdct_x = tdct(
+        tdct(x, norm=norm).transpose(length - 2, length - 1), norm=norm
+    ).transpose(length - 2, length - 1)
     return block_merging(tdct_x)
 
-def idct_img(x,norm='ortho'):
+
+def idct_img(x, norm="ortho"):
     x = block_splitting(x)
     length = len(x.shape)
-    tidct_x = tidct(tidct(x.transpose(length-2, length-1), norm=norm).transpose(length-2, length-1), norm=norm)
+    tidct_x = tidct(
+        tidct(x.transpose(length - 2, length - 1), norm=norm).transpose(
+            length - 2, length - 1
+        ),
+        norm=norm,
+    )
     return block_merging(tidct_x)
 
+
 def block_merging(patches, height=512, width=512):
-    """ Merge pathces into image
+    """Merge pathces into image
     Inputs:
         patches(tensor) batch x height*width/64, height x width
         height(int)
@@ -1021,26 +1185,28 @@ def block_merging(patches, height=512, width=512):
     Output:
         image(tensor): batch x height x width
     """
-        
+
     k = 16
     batch_size = patches.shape[0]
-    image_reshaped = patches.view(batch_size, 3, height//k, width//k, k, k)
-    image_transposed = image_reshaped.permute(0, 1, 2,4, 3, 5)
+    image_reshaped = patches.view(batch_size, 3, height // k, width // k, k, k)
+    image_transposed = image_reshaped.permute(0, 1, 2, 4, 3, 5)
 
-    return image_transposed.contiguous().view(batch_size,3, height, width)
+    return image_transposed.contiguous().view(batch_size, 3, height, width)
 
-def block_splitting(image,k=16):
-    """ Splitting image into patches
+
+def block_splitting(image, k=16):
+    """Splitting image into patches
     Input:
         image(tensor): batch x c x height x width
-    Output: 
+    Output:
         patch(tensor):  batch  x h*w/64 x c x h x w
     """
-    channel,height, width = image.shape[1:4]
+    channel, height, width = image.shape[1:4]
     batch_size = image.shape[0]
-    image_reshaped = image.view(batch_size,channel, height // k, k, -1, k)
-    image_transposed = image_reshaped.permute(0, 1, 2,4, 3, 5)
-    return image_transposed.contiguous().view(batch_size, channel,-1,k, k)
+    image_reshaped = image.view(batch_size, channel, height // k, k, -1, k)
+    image_transposed = image_reshaped.permute(0, 1, 2, 4, 3, 5)
+    return image_transposed.contiguous().view(batch_size, channel, -1, k, k)
+
 
 if __name__ == "__main__":
     args = parse_args()

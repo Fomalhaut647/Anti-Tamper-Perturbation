@@ -16,7 +16,12 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DDPMScheduler,
+    DiffusionPipeline,
+    UNet2DConditionModel,
+)
 from diffusers.utils.import_utils import is_xformers_available
 from PIL import Image
 from torch.utils.data import Dataset
@@ -26,14 +31,13 @@ from transformers import AutoTokenizer, PretrainedConfig
 import argparse
 from torch_dct import dct as tdct
 from torch_dct import idct as tidct
+
 # from scipy.fftpack import dct, idct
 import numpy as np
 import yaml
 
 
 logger = get_logger(__name__)
-
-
 
 
 class DreamBoothDatasetFromTensor(Dataset):
@@ -70,8 +74,12 @@ class DreamBoothDatasetFromTensor(Dataset):
 
         self.image_transforms = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.Resize(
+                    size, interpolation=transforms.InterpolationMode.BILINEAR
+                ),
+                transforms.CenterCrop(size)
+                if center_crop
+                else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
             ]
@@ -93,7 +101,9 @@ class DreamBoothDatasetFromTensor(Dataset):
         ).input_ids
 
         if self.class_data_root:
-            class_image = Image.open(self.class_images_path[index % self.num_class_images])
+            class_image = Image.open(
+                self.class_images_path[index % self.num_class_images]
+            )
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
@@ -108,7 +118,9 @@ class DreamBoothDatasetFromTensor(Dataset):
         return example
 
 
-def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
+def import_model_class_from_model_name_or_path(
+    pretrained_model_name_or_path: str, revision: str
+):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path,
         subfolder="text_encoder",
@@ -121,7 +133,9 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
 
         return CLIPTextModel
     elif model_class == "RobertaSeriesModelWithTransformation":
-        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import RobertaSeriesModelWithTransformation
+        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
+            RobertaSeriesModelWithTransformation,
+        )
 
         return RobertaSeriesModelWithTransformation
     else:
@@ -214,7 +228,9 @@ def parse_args(input_args=None):
         default="text-inversion-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
-    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
+    parser.add_argument(
+        "--seed", type=int, default=None, help="A seed for reproducible training."
+    )
     parser.add_argument(
         "--resolution",
         type=int,
@@ -373,14 +389,19 @@ class PromptDataset(Dataset):
 def load_data(data_dir, size=512, center_crop=True) -> torch.Tensor:
     image_transforms = transforms.Compose(
         [
-            transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.Resize(
+                size, interpolation=transforms.InterpolationMode.BILINEAR
+            ),
             transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
         ]
     )
 
-    images = [image_transforms(Image.open(i).convert("RGB")) for i in list(Path(data_dir).iterdir())]
+    images = [
+        image_transforms(Image.open(i).convert("RGB"))
+        for i in list(Path(data_dir).iterdir())
+    ]
     images = torch.stack(images)
     return images
 
@@ -429,10 +450,12 @@ def train_one_epoch(
         text_encoder.train()
 
         step_data = train_dataset[step % len(train_dataset)]
-        pixel_values = torch.stack([step_data["instance_images"], step_data["class_images"]]).to(
-            device, dtype=weight_dtype
-        )
-        input_ids = torch.cat([step_data["instance_prompt_ids"], step_data["class_prompt_ids"]], dim=0).to(device)
+        pixel_values = torch.stack(
+            [step_data["instance_images"], step_data["class_images"]]
+        ).to(device, dtype=weight_dtype)
+        input_ids = torch.cat(
+            [step_data["instance_prompt_ids"], step_data["class_prompt_ids"]], dim=0
+        ).to(device)
 
         latents = vae.encode(pixel_values).latent_dist.sample()
         latents = latents * vae.config.scaling_factor
@@ -441,7 +464,9 @@ def train_one_epoch(
         noise = torch.randn_like(latents)
         bsz = latents.shape[0]
         # Sample a random timestep for each image
-        timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+        timesteps = torch.randint(
+            0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device
+        )
         timesteps = timesteps.long()
 
         # Add noise to the latents according to the noise magnitude at each timestep
@@ -460,7 +485,9 @@ def train_one_epoch(
         elif noise_scheduler.config.prediction_type == "v_prediction":
             target = noise_scheduler.get_velocity(latents, noise, timesteps)
         else:
-            raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+            raise ValueError(
+                f"Unknown prediction type {noise_scheduler.config.prediction_type}"
+            )
 
         # with prior preservation loss
         if args.with_prior_preservation:
@@ -468,10 +495,14 @@ def train_one_epoch(
             target, target_prior = torch.chunk(target, 2, dim=0)
 
             # Compute instance loss
-            instance_loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+            instance_loss = F.mse_loss(
+                model_pred.float(), target.float(), reduction="mean"
+            )
 
             # Compute prior loss
-            prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
+            prior_loss = F.mse_loss(
+                model_pred_prior.float(), target_prior.float(), reduction="mean"
+            )
 
             # Add the prior loss to the instance loss.
             loss = instance_loss + args.prior_loss_weight * prior_loss
@@ -489,10 +520,12 @@ def train_one_epoch(
 
     return [unet, text_encoder]
 
+
 def load_config(config_file):
-    with open(config_file, 'r') as f:
+    with open(config_file, "r") as f:
         config = yaml.safe_load(f)
     return config
+
 
 def pgd_attack(
     args,
@@ -504,18 +537,14 @@ def pgd_attack(
     original_images: torch.Tensor,
     target_tensor: torch.Tensor,
     num_steps: int,
-    mask_path: str
+    mask_path: str,
 ):
     """Return new perturbed data"""
 
-   
-
-    
     config = load_config(args.input_config)
-    random_mask = torch.load(config['mask'])
-    random_mask = 1-random_mask
+    random_mask = torch.load(config["mask"])
+    random_mask = 1 - random_mask
     random_mask = random_mask.cpu()
-
 
     unet, text_encoder = models
     weight_dtype = torch.bfloat16
@@ -538,14 +567,18 @@ def pgd_attack(
     total_loss = 0
     for step in range(num_steps):
         perturbed_images.requires_grad = True
-        latents = vae.encode(perturbed_images.to(device, dtype=weight_dtype)).latent_dist.sample()
+        latents = vae.encode(
+            perturbed_images.to(device, dtype=weight_dtype)
+        ).latent_dist.sample()
         latents = latents * vae.config.scaling_factor
 
         # Sample noise that we'll add to the latents
         noise = torch.randn_like(latents)
         bsz = latents.shape[0]
         # Sample a random timestep for each image
-        timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+        timesteps = torch.randint(
+            0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device
+        )
         timesteps = timesteps.long()
         # Add noise to the latents according to the noise magnitude at each timestep
         # (this is the forward diffusion process)
@@ -563,7 +596,9 @@ def pgd_attack(
         elif noise_scheduler.config.prediction_type == "v_prediction":
             target = noise_scheduler.get_velocity(latents, noise, timesteps)
         else:
-            raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+            raise ValueError(
+                f"Unknown prediction type {noise_scheduler.config.prediction_type}"
+            )
 
         unet.zero_grad()
         text_encoder.zero_grad()
@@ -588,18 +623,18 @@ def pgd_attack(
 
         alpha = args.pgd_alpha
         eps = args.pgd_eps
-        if random_mask.sum() == 512*512*3:
+        if random_mask.sum() == 512 * 512 * 3:
             grad = perturbed_images.grad
-            print('whole')
+            print("whole")
         else:
-            print('random')
-            print(random_mask.sum()/(512*512*3))
-            grad = perturbed_images.grad*(1-random_mask)
+            print("random")
+            print(random_mask.sum() / (512 * 512 * 3))
+            grad = perturbed_images.grad * (1 - random_mask)
         # grad = perturbed_images.grad
         adv_images = perturbed_images + alpha * grad.sign()
         eta = torch.clamp(adv_images - original_images, min=-eps, max=+eps)
         perturbed_images = torch.clamp(original_images + eta, min=-1, max=+1).detach_()
-        #print(f"PGD loss - step {step}, loss: {loss.detach().item()}")
+        # print(f"PGD loss - step {step}, loss: {loss.detach().item()}")
         total_loss += loss.detach().item()
     print(f"Mean loss: {total_loss/num_steps}")
     return perturbed_images
@@ -615,12 +650,12 @@ def pgd_attack_freq(
     original_images: torch.Tensor,
     target_tensor: torch.Tensor,
     num_steps: int,
-    mask_path: str
+    mask_path: str,
 ):
     """Return new perturbed data"""
     config = load_config(args.input_config)
-    random_mask = torch.load(config['mask'])
-    random_mask = 1-random_mask
+    random_mask = torch.load(config["mask"])
+    random_mask = 1 - random_mask
     random_mask = random_mask.cpu()
 
     # mask = (mask-1)*(-1)
@@ -646,14 +681,18 @@ def pgd_attack_freq(
     for step in range(num_steps):
         # print(step,num_steps)
         perturbed_images.requires_grad = True
-        latents = vae.encode(perturbed_images.to(device, dtype=weight_dtype)).latent_dist.sample()
+        latents = vae.encode(
+            perturbed_images.to(device, dtype=weight_dtype)
+        ).latent_dist.sample()
         latents = latents * vae.config.scaling_factor
 
         # Sample noise that we'll add to the latents
         noise = torch.randn_like(latents)
         bsz = latents.shape[0]
         # Sample a random timestep for each image
-        timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+        timesteps = torch.randint(
+            0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device
+        )
         timesteps = timesteps.long()
         # Add noise to the latents according to the noise magnitude at each timestep
         # (this is the forward diffusion process)
@@ -671,7 +710,9 @@ def pgd_attack_freq(
         elif noise_scheduler.config.prediction_type == "v_prediction":
             target = noise_scheduler.get_velocity(latents, noise, timesteps)
         else:
-            raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+            raise ValueError(
+                f"Unknown prediction type {noise_scheduler.config.prediction_type}"
+            )
 
         unet.zero_grad()
         text_encoder.zero_grad()
@@ -695,42 +736,45 @@ def pgd_attack_freq(
 
         alpha = args.pgd_alpha
         eps = args.pgd_eps
-        
-        #original perturbation
-        #adv_images = perturbed_images + alpha * perturbed_images.grad.sign()
-        
-        #frequency-domain attack version
-        
-        
+
+        # original perturbation
+        # adv_images = perturbed_images + alpha * perturbed_images.grad.sign()
+
+        # frequency-domain attack version
+
         def zero_low_frequencies(x):
-       
+
             x_dct = dct_img(x)
             x_dct *= random_mask
-            x_idct = idct_img(float(config['ANTIDB']['step_size'])*x_dct.sign())
- 
+            x_idct = idct_img(float(config["ANTIDB"]["step_size"]) * x_dct.sign())
+
             return x_idct
 
         grad = zero_low_frequencies(perturbed_images.grad)
         with torch.no_grad():
             adv_images = perturbed_images + grad
 
-        
-        adv_images_dct = dct_img(adv_images )
+        adv_images_dct = dct_img(adv_images)
         original_images_dct = dct_img(original_images)
-        
-        eps=float(config['ANTIDB']['radius'])
+
+        eps = float(config["ANTIDB"]["radius"])
         # print(eps)
-        eta = torch.clamp(adv_images_dct - original_images_dct, min=-eps, max=+eps)*random_mask
-        perturbed_images = torch.clamp(idct_img(original_images_dct + eta), min=-1, max=+1).detach_()
+        eta = (
+            torch.clamp(adv_images_dct - original_images_dct, min=-eps, max=+eps)
+            * random_mask
+        )
+        perturbed_images = torch.clamp(
+            idct_img(original_images_dct + eta), min=-1, max=+1
+        ).detach_()
         # adv_images_dct *= (mask-1)*(-1)
         # perturbed_images_dct = dct_img(perturbed_images)
 
-
         # print((perturbed_images_dct*(1-mask)-original_images_dct*(1-mask)).abs().max(),(adv_images_dct-original_images_dct).abs().max())
-        
+
         total_loss += loss.detach().item()
     print(f"Mean loss: {total_loss/num_steps}")
     return perturbed_images
+
 
 ###for original pgd_freq attack###
 def pgd_attack_freq_pixelsign(
@@ -743,15 +787,15 @@ def pgd_attack_freq_pixelsign(
     original_images: torch.Tensor,
     target_tensor: torch.Tensor,
     num_steps: int,
-    mask_path: str
+    mask_path: str,
 ):
     """Return new perturbed data"""
     config = load_config(args.input_config)
-    random_mask = torch.load(config['mask'])
-    random_mask = 1-random_mask
+    random_mask = torch.load(config["mask"])
+    random_mask = 1 - random_mask
     random_mask = random_mask.cpu()
 
-    mask = (mask-1)*(-1)
+    mask = (mask - 1) * (-1)
     unet, text_encoder = models
     weight_dtype = torch.bfloat16
     device = torch.device("cuda")
@@ -774,14 +818,18 @@ def pgd_attack_freq_pixelsign(
     for step in range(num_steps):
         # print(step,num_steps)
         perturbed_images.requires_grad = True
-        latents = vae.encode(perturbed_images.to(device, dtype=weight_dtype)).latent_dist.sample()
+        latents = vae.encode(
+            perturbed_images.to(device, dtype=weight_dtype)
+        ).latent_dist.sample()
         latents = latents * vae.config.scaling_factor
 
         # Sample noise that we'll add to the latents
         noise = torch.randn_like(latents)
         bsz = latents.shape[0]
         # Sample a random timestep for each image
-        timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+        timesteps = torch.randint(
+            0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device
+        )
         timesteps = timesteps.long()
         # Add noise to the latents according to the noise magnitude at each timestep
         # (this is the forward diffusion process)
@@ -799,7 +847,9 @@ def pgd_attack_freq_pixelsign(
         elif noise_scheduler.config.prediction_type == "v_prediction":
             target = noise_scheduler.get_velocity(latents, noise, timesteps)
         else:
-            raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+            raise ValueError(
+                f"Unknown prediction type {noise_scheduler.config.prediction_type}"
+            )
 
         unet.zero_grad()
         text_encoder.zero_grad()
@@ -823,18 +873,17 @@ def pgd_attack_freq_pixelsign(
 
         alpha = args.pgd_alpha
         eps = args.pgd_eps
-        
-        #original perturbation
-        #adv_images = perturbed_images + alpha * perturbed_images.grad.sign()
-        
-        #frequency-domain attack version
-        
-        
+
+        # original perturbation
+        # adv_images = perturbed_images + alpha * perturbed_images.grad.sign()
+
+        # frequency-domain attack version
+
         def zero_low_frequencies(x, ratio=0.5):
             # change axis order
             # mask = torch#np.zeros(x.size())
             # mask[:, :int(image_size * ratio), :int(image_size * ratio)] = 1
-       
+
             x_dct = dct_img(x)
             x_dct *= mask
             x_idct = idct_img(x_dct)
@@ -843,35 +892,45 @@ def pgd_attack_freq_pixelsign(
             # change axis order back
             return x_idct
 
-        grad = zero_low_frequencies(perturbed_images.grad,0.125)
-        
+        grad = zero_low_frequencies(perturbed_images.grad, 0.125)
+
         alpha = args.pgd_alpha
         eps = args.pgd_eps
-        print('well')
+        print("well")
         with torch.no_grad():
             adv_images = perturbed_images + alpha * grad.sign()
         eta = torch.clamp(adv_images - original_images, min=-eps, max=+eps)
         perturbed_images = torch.clamp(original_images + eta, min=-1, max=+1).detach_()
-        
+
         total_loss += loss.detach().item()
     print(f"Mean loss: {total_loss/num_steps}")
     return perturbed_images
 
-def dct_img(x,norm='ortho'):
+
+def dct_img(x, norm="ortho"):
     # print(x.shape)
     x = block_splitting(x)
     length = len(x.shape)
-    tdct_x = tdct(tdct(x, norm=norm).transpose(length-2, length-1), norm=norm).transpose(length-2, length-1)
+    tdct_x = tdct(
+        tdct(x, norm=norm).transpose(length - 2, length - 1), norm=norm
+    ).transpose(length - 2, length - 1)
     return block_merging(tdct_x)
 
-def idct_img(x,norm='ortho'):
+
+def idct_img(x, norm="ortho"):
     x = block_splitting(x)
     length = len(x.shape)
-    tidct_x = tidct(tidct(x.transpose(length-2, length-1), norm=norm).transpose(length-2, length-1), norm=norm)
+    tidct_x = tidct(
+        tidct(x.transpose(length - 2, length - 1), norm=norm).transpose(
+            length - 2, length - 1
+        ),
+        norm=norm,
+    )
     return block_merging(tidct_x)
 
+
 def block_merging(patches, height=512, width=512):
-    """ Merge pathces into image
+    """Merge pathces into image
     Inputs:
         patches(tensor) batch x height*width/64, height x width
         height(int)
@@ -879,26 +938,28 @@ def block_merging(patches, height=512, width=512):
     Output:
         image(tensor): batch x height x width
     """
-        
+
     k = 16
     batch_size = patches.shape[0]
-    image_reshaped = patches.view(batch_size, 3, height//k, width//k, k, k)
-    image_transposed = image_reshaped.permute(0, 1, 2,4, 3, 5)
+    image_reshaped = patches.view(batch_size, 3, height // k, width // k, k, k)
+    image_transposed = image_reshaped.permute(0, 1, 2, 4, 3, 5)
 
-    return image_transposed.contiguous().view(batch_size,3, height, width)
+    return image_transposed.contiguous().view(batch_size, 3, height, width)
 
-def block_splitting(image,k=16):
-    """ Splitting image into patches
+
+def block_splitting(image, k=16):
+    """Splitting image into patches
     Input:
         image(tensor): batch x c x height x width
-    Output: 
+    Output:
         patch(tensor):  batch  x h*w/64 x c x h x w
     """
-    channel,height, width = image.shape[1:4]
+    channel, height, width = image.shape[1:4]
     batch_size = image.shape[0]
-    image_reshaped = image.view(batch_size,channel, height // k, k, -1, k)
-    image_transposed = image_reshaped.permute(0, 1, 2,4, 3, 5)
-    return image_transposed.contiguous().view(batch_size, channel,-1,k, k)
+    image_reshaped = image.view(batch_size, channel, height // k, k, -1, k)
+    image_transposed = image_reshaped.permute(0, 1, 2, 4, 3, 5)
+    return image_transposed.contiguous().view(batch_size, channel, -1, k, k)
+
 
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
@@ -926,7 +987,7 @@ def main(args):
 
     if args.seed is not None:
         set_seed(args.seed)
-        print('seed',args.seed)
+        print("seed", args.seed)
 
     # Generate class images if prior preservation is enabled.
     if args.with_prior_preservation:
@@ -936,7 +997,9 @@ def main(args):
         cur_class_images = len(list(class_images_dir.iterdir()))
 
         if cur_class_images < args.num_class_images:
-            torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
+            torch_dtype = (
+                torch.float16 if accelerator.device.type == "cuda" else torch.float32
+            )
             if args.mixed_precision == "fp32":
                 torch_dtype = torch.float32
             elif args.mixed_precision == "fp16":
@@ -955,7 +1018,9 @@ def main(args):
             logger.info(f"Number of class images to sample: {num_new_images}.")
 
             sample_dataset = PromptDataset(args.class_prompt, num_new_images)
-            sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size)
+            sample_dataloader = torch.utils.data.DataLoader(
+                sample_dataset, batch_size=args.sample_batch_size
+            )
 
             sample_dataloader = accelerator.prepare(sample_dataloader)
             pipeline.to(accelerator.device)
@@ -969,7 +1034,10 @@ def main(args):
 
                 for i, image in enumerate(images):
                     hash_image = hashlib.sha1(image.tobytes()).hexdigest()
-                    image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                    image_filename = (
+                        class_images_dir
+                        / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                    )
                     image.save(image_filename)
 
             del pipeline
@@ -977,7 +1045,9 @@ def main(args):
                 torch.cuda.empty_cache()
 
     # import correct text encoder class
-    text_encoder_cls = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path, args.revision)
+    text_encoder_cls = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision
+    )
 
     # Load scheduler and models
     text_encoder = text_encoder_cls.from_pretrained(
@@ -996,7 +1066,9 @@ def main(args):
         use_fast=False,
     )
 
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    noise_scheduler = DDPMScheduler.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="scheduler"
+    )
 
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision
@@ -1027,21 +1099,36 @@ def main(args):
         if is_xformers_available():
             unet.enable_xformers_memory_efficient_attention()
         else:
-            raise ValueError("xformers is not available. Make sure it is installed correctly")
+            raise ValueError(
+                "xformers is not available. Make sure it is installed correctly"
+            )
 
     target_latent_tensor = None
     if args.target_image_path is not None:
         target_image_path = Path(args.target_image_path)
-        assert target_image_path.is_file(), f"Target image path {target_image_path} does not exist"
+        assert (
+            target_image_path.is_file()
+        ), f"Target image path {target_image_path} does not exist"
 
-        target_image = Image.open(target_image_path).convert("RGB").resize((args.resolution, args.resolution))
+        target_image = (
+            Image.open(target_image_path)
+            .convert("RGB")
+            .resize((args.resolution, args.resolution))
+        )
         target_image = np.array(target_image)[None].transpose(0, 3, 1, 2)
 
-        target_image_tensor = torch.from_numpy(target_image).to("cuda", dtype=torch.float32) / 127.5 - 1.0
-        target_latent_tensor = (
-            vae.encode(target_image_tensor).latent_dist.sample().to(dtype=torch.bfloat16) * vae.config.scaling_factor
+        target_image_tensor = (
+            torch.from_numpy(target_image).to("cuda", dtype=torch.float32) / 127.5 - 1.0
         )
-        target_latent_tensor = target_latent_tensor.repeat(len(perturbed_data), 1, 1, 1).cuda()
+        target_latent_tensor = (
+            vae.encode(target_image_tensor)
+            .latent_dist.sample()
+            .to(dtype=torch.bfloat16)
+            * vae.config.scaling_factor
+        )
+        target_latent_tensor = target_latent_tensor.repeat(
+            len(perturbed_data), 1, 1, 1
+        ).cuda()
 
     f = [unet, text_encoder]
     for i in range(args.max_train_steps):
@@ -1056,7 +1143,7 @@ def main(args):
             clean_data,
             args.max_f_train_steps,
         )
-        if not args.input_config :
+        if not args.input_config:
             perturbed_data = pgd_attack(
                 args,
                 f_sur,
@@ -1067,7 +1154,7 @@ def main(args):
                 original_data,
                 target_latent_tensor,
                 args.max_adv_train_steps,
-                args.instance_data_dir_for_adversarial
+                args.instance_data_dir_for_adversarial,
             )
         else:
             perturbed_data = pgd_attack_freq(
@@ -1080,7 +1167,7 @@ def main(args):
                 original_data,
                 target_latent_tensor,
                 args.max_adv_train_steps,
-                args.instance_data_dir_for_adversarial
+                args.instance_data_dir_for_adversarial,
             )
         f = train_one_epoch(
             args,
@@ -1098,12 +1185,19 @@ def main(args):
             noised_imgs = perturbed_data.detach()
             img_names = [
                 str(instance_path).split("/")[-1]
-                for instance_path in list(Path(args.instance_data_dir_for_adversarial).iterdir())
+                for instance_path in list(
+                    Path(args.instance_data_dir_for_adversarial).iterdir()
+                )
             ]
             for img_pixel, img_name in zip(noised_imgs, img_names):
                 save_path = os.path.join(save_folder, f"{i+1}_noise_{img_name}")
                 Image.fromarray(
-                    (img_pixel * 127.5 + 128).clamp(0, 255).to(torch.uint8).permute(1, 2, 0).cpu().numpy()
+                    (img_pixel * 127.5 + 128)
+                    .clamp(0, 255)
+                    .to(torch.uint8)
+                    .permute(1, 2, 0)
+                    .cpu()
+                    .numpy()
                 ).save(save_path)
             print(f"Saved noise at step {i+1} to {save_folder}")
 

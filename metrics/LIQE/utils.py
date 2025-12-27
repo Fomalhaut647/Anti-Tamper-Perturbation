@@ -1,7 +1,12 @@
 from ImageDataset import ImageDataset
 from torch.utils.data import DataLoader
 from ImageDataset2 import ImageDataset2, ImageDataset_Inf, ImageDataset3
-from ImageDataset import ImageDataset_SPAQ, ImageDataset_TID, ImageDataset_PIPAL, ImageDataset_ava
+from ImageDataset import (
+    ImageDataset_SPAQ,
+    ImageDataset_TID,
+    ImageDataset_PIPAL,
+    ImageDataset_ava,
+)
 
 from torchvision.transforms import Compose, ToTensor, Normalize, RandomHorizontalFlip
 from torchvision import transforms
@@ -10,9 +15,11 @@ from PIL import Image
 
 try:
     from torchvision.transforms import InterpolationMode
+
     BICUBIC = InterpolationMode.BICUBIC
 except ImportError:
     BICUBIC = Image.BICUBIC
+
 
 def set_dataset(csv_file, bs, data_set, num_workers, preprocess, num_patch, test):
 
@@ -21,14 +28,17 @@ def set_dataset(csv_file, bs, data_set, num_workers, preprocess, num_patch, test
         img_dir=data_set,
         num_patch=num_patch,
         test=test,
-        preprocess=preprocess)
+        preprocess=preprocess,
+    )
 
     if test:
         shuffle = False
     else:
         shuffle = True
 
-    loader = DataLoader(data, batch_size=bs, shuffle=shuffle, pin_memory=True, num_workers=num_workers)
+    loader = DataLoader(
+        data, batch_size=bs, shuffle=shuffle, pin_memory=True, num_workers=num_workers
+    )
 
     return loader
 
@@ -40,14 +50,17 @@ def set_dataset3(csv_file, bs, data_set, num_workers, preprocess, num_patch, tes
         img_dir=data_set,
         num_patch=num_patch,
         test=test,
-        preprocess=preprocess)
+        preprocess=preprocess,
+    )
 
     if test:
         shuffle = False
     else:
         shuffle = True
 
-    loader = DataLoader(data, batch_size=bs, shuffle=shuffle, pin_memory=True, num_workers=num_workers)
+    loader = DataLoader(
+        data, batch_size=bs, shuffle=shuffle, pin_memory=True, num_workers=num_workers
+    )
 
     return loader
 
@@ -59,11 +72,14 @@ def set_dataset2(csv_file, bs, data_set, num_workers, preprocess, num_patch, tes
         img_dir=data_set,
         num_patch=num_patch,
         test=test,
-        preprocess=preprocess)
+        preprocess=preprocess,
+    )
 
     shuffle = False
 
-    loader = DataLoader(data, batch_size=bs, shuffle=shuffle, pin_memory=True, num_workers=num_workers)
+    loader = DataLoader(
+        data, batch_size=bs, shuffle=shuffle, pin_memory=True, num_workers=num_workers
+    )
 
     return loader
 
@@ -75,14 +91,17 @@ def set_spaq(csv_file, bs, data_set, num_workers, preprocess, num_patch, test):
         img_dir=data_set,
         num_patch=num_patch,
         test=test,
-        preprocess=preprocess)
+        preprocess=preprocess,
+    )
 
     if test:
         shuffle = False
     else:
         shuffle = True
 
-    loader = DataLoader(data, batch_size=bs, shuffle=shuffle, pin_memory=True, num_workers=num_workers)
+    loader = DataLoader(
+        data, batch_size=bs, shuffle=shuffle, pin_memory=True, num_workers=num_workers
+    )
 
     return loader
 
@@ -94,14 +113,17 @@ def set_tid(csv_file, bs, data_set, num_workers, preprocess, num_patch, test):
         img_dir=data_set,
         num_patch=num_patch,
         test=test,
-        preprocess=preprocess)
+        preprocess=preprocess,
+    )
 
     if test:
         shuffle = False
     else:
         shuffle = True
 
-    loader = DataLoader(data, batch_size=bs, shuffle=shuffle, pin_memory=True, num_workers=num_workers)
+    loader = DataLoader(
+        data, batch_size=bs, shuffle=shuffle, pin_memory=True, num_workers=num_workers
+    )
 
     return loader
 
@@ -113,14 +135,17 @@ def set_pipal(csv_file, bs, data_set, num_workers, preprocess, num_patch, test):
         img_dir=data_set,
         num_patch=num_patch,
         test=test,
-        preprocess=preprocess)
+        preprocess=preprocess,
+    )
 
     if test:
         shuffle = False
     else:
         shuffle = True
 
-    loader = DataLoader(data, batch_size=bs, shuffle=shuffle, pin_memory=True, num_workers=num_workers)
+    loader = DataLoader(
+        data, batch_size=bs, shuffle=shuffle, pin_memory=True, num_workers=num_workers
+    )
 
     return loader
 
@@ -128,14 +153,14 @@ def set_pipal(csv_file, bs, data_set, num_workers, preprocess, num_patch, test):
 def set_ava(csv_file, bs, data_set, num_workers, preprocess, num_patch, test):
 
     data = ImageDataset_ava(
-        npy_file='./ava_test.npy',
-        img_dir=data_set,
-        preprocess=preprocess)
+        npy_file="./ava_test.npy", img_dir=data_set, preprocess=preprocess
+    )
 
-    loader = DataLoader(data, batch_size=bs, shuffle=False, pin_memory=True, num_workers=num_workers)
+    loader = DataLoader(
+        data, batch_size=bs, shuffle=False, pin_memory=True, num_workers=num_workers
+    )
 
     return loader
-
 
 
 class AdaptiveResize(object):
@@ -183,22 +208,35 @@ class AdaptiveResize(object):
 def _convert_image_to_rgb(image):
     return image.convert("RGB")
 
+
 def _preprocess2():
-    return Compose([
-        _convert_image_to_rgb,
-        AdaptiveResize(768),
-        ToTensor(),
-        Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
-    ])
+    return Compose(
+        [
+            _convert_image_to_rgb,
+            AdaptiveResize(768),
+            ToTensor(),
+            Normalize(
+                (0.48145466, 0.4578275, 0.40821073),
+                (0.26862954, 0.26130258, 0.27577711),
+            ),
+        ]
+    )
+
 
 def _preprocess3():
-    return Compose([
-        _convert_image_to_rgb,
-        AdaptiveResize(768),
-        RandomHorizontalFlip(),
-        ToTensor(),
-        Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
-    ])
+    return Compose(
+        [
+            _convert_image_to_rgb,
+            AdaptiveResize(768),
+            RandomHorizontalFlip(),
+            ToTensor(),
+            Normalize(
+                (0.48145466, 0.4578275, 0.40821073),
+                (0.26862954, 0.26130258, 0.27577711),
+            ),
+        ]
+    )
+
 
 def convert_models_to_fp32(model):
     for p in model.parameters():

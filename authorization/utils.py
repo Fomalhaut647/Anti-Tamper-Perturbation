@@ -7,34 +7,29 @@ from networks import HIDNet
 import logging
 import os
 
+
 def set_seed(seed):
-    
+
     random.seed(seed)
-    
-    
+
     np.random.seed(seed)
-    
-    
+
     torch.manual_seed(seed)
-    
-    
+
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed) 
-    
-    
+        torch.cuda.manual_seed_all(seed)
+
     torch.backends.cudnn.deterministic = True
-    
-    
+
     torch.backends.cudnn.benchmark = False
-
-
 
 
 class TensorBoardLogger:
     """
     Wrapper class for easy TensorboardX logging
     """
+
     def __init__(self, log_dir):
         self.grads = {}
         self.tensors = {}
@@ -47,16 +42,19 @@ class TensorBoardLogger:
 
     def save_losses(self, losses_accu: dict, step: int):
         for loss_name, loss_value in losses_accu.items():
-            self.writer.add_scalar('losses/{}'.format(loss_name.strip()), loss_value, global_step=step)
-    
+            self.writer.add_scalar(
+                "losses/{}".format(loss_name.strip()), loss_value, global_step=step
+            )
+
     def save_val_losses(self, losses_accu: dict, step: int):
         for loss_name, loss_value in losses_accu.items():
-            self.writer.add_scalar('val_losses/{}'.format(loss_name.strip()), loss_value, global_step=step)
+            self.writer.add_scalar(
+                "val_losses/{}".format(loss_name.strip()), loss_value, global_step=step
+            )
 
     def save_images(self, images: torch.Tensor, step: int):
         # grid = vutils.make_grid(images, normalize=True)
-        self.writer.add_images('images/{}'.format(step), images, global_step=step)
-
+        self.writer.add_images("images/{}".format(step), images, global_step=step)
 
     # def save_grads(self, epoch: int):
     #     for grad_name, grad_values in self.grads.items():
@@ -69,30 +67,33 @@ class TensorBoardLogger:
     #     for tensor_name, tensor_value in self.tensors.items():
     #         self.writer.add_histogram('tensor/{}'.format(tensor_name), tensor_value, global_step=epoch)
 
-def save_checkpoint(model: HIDNet, experiment_name: str, epoch: int, checkpoint_folder: str):
-    """ Saves a checkpoint at the end of an epoch. """
+
+def save_checkpoint(
+    model: HIDNet, experiment_name: str, epoch: int, checkpoint_folder: str
+):
+    """Saves a checkpoint at the end of an epoch."""
     if not os.path.exists(checkpoint_folder):
         os.makedirs(checkpoint_folder)
 
-    checkpoint_filename = f'{experiment_name}--epoch-{epoch}.pyt'
+    checkpoint_filename = f"{experiment_name}--epoch-{epoch}.pyt"
     checkpoint_filename = os.path.join(checkpoint_folder, checkpoint_filename)
-    logging.info('Saving checkpoint to {}'.format(checkpoint_filename))
+    logging.info("Saving checkpoint to {}".format(checkpoint_filename))
     checkpoint = {
-        'enc-dec-model': model.encoder_decoder.state_dict(),
-        'enc-dec-optim': model.optimizer_enc_dec.state_dict(),
-        'discrim-model': model.discriminator.state_dict(),
-        'discrim-optim': model.optimizer_discrim.state_dict(),
-        'mapper-model': model.mapping_network.state_dict(),
-        'epoch': epoch
+        "enc-dec-model": model.encoder_decoder.state_dict(),
+        "enc-dec-optim": model.optimizer_enc_dec.state_dict(),
+        "discrim-model": model.discriminator.state_dict(),
+        "discrim-optim": model.optimizer_discrim.state_dict(),
+        "mapper-model": model.mapping_network.state_dict(),
+        "epoch": epoch,
     }
     torch.save(checkpoint, checkpoint_filename)
-    logging.info('Saving checkpoint done.')
+    logging.info("Saving checkpoint done.")
 
 
-def get_phis(phi_dimension, batch_size ,eps = 1e-8):
+def get_phis(phi_dimension, batch_size, eps=1e-8):
     phi_length = phi_dimension
     b = batch_size
-    phi = torch.empty(b,phi_length).uniform_(0,1)
+    phi = torch.empty(b, phi_length).uniform_(0, 1)
     return torch.bernoulli(phi) + eps
 
 
@@ -100,12 +101,12 @@ def create_folder_for_run(runs_folder, experiment_name):
     if not os.path.exists(runs_folder):
         os.makedirs(runs_folder)
 
-    this_run_folder = os.path.join(runs_folder, f'{experiment_name}')
+    this_run_folder = os.path.join(runs_folder, f"{experiment_name}")
     if not os.path.exists(runs_folder):
         os.makedirs(this_run_folder)
-    if not os.path.exists(os.path.join(this_run_folder, 'checkpoints')):
-        os.makedirs(os.path.join(this_run_folder, 'checkpoints'))
-    
+    if not os.path.exists(os.path.join(this_run_folder, "checkpoints")):
+        os.makedirs(os.path.join(this_run_folder, "checkpoints"))
+
     return this_run_folder
 
 
@@ -113,6 +114,7 @@ import cv2
 import torch
 import degradations as degradations
 from torchvision.transforms.functional import normalize
+
 
 def img2tensor(imgs, bgr2rgb=True, float32=True):
     """Numpy array to tensor.
@@ -129,8 +131,8 @@ def img2tensor(imgs, bgr2rgb=True, float32=True):
 
     def _totensor(img, bgr2rgb, float32):
         if img.shape[2] == 3 and bgr2rgb:
-            if img.dtype == 'float64':
-                img = img.astype('float32')
+            if img.dtype == "float64":
+                img = img.astype("float32")
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = torch.from_numpy(img.transpose(2, 0, 1))
         if float32:
@@ -143,14 +145,13 @@ def img2tensor(imgs, bgr2rgb=True, float32=True):
         return _totensor(imgs, bgr2rgb, float32)
 
 
-class Degradation():
-
-    def __init__(self, noise_type,noise_args):
+class Degradation:
+    def __init__(self, noise_type, noise_args):
         super(Degradation, self).__init__()
         # degradation configurations
 
-        assert noise_type in ['JPEG','Resize','Blur','Noise']
-            
+        assert noise_type in ["JPEG", "Resize", "Blur", "Noise"]
+
         self.noise_type = noise_type
 
         # if noise_type == 'Blur':
@@ -164,44 +165,47 @@ class Degradation():
         # else:
         #     self.downsample_range = opt['downsample_range']
 
-        
-        if noise_type == 'JPEG':
+        if noise_type == "JPEG":
             self.jpeg_quality = noise_args
-        elif  noise_type == 'Resize':
+        elif noise_type == "Resize":
             self.downsample_scale = noise_args
-        elif  noise_type == 'Blur':
+        elif noise_type == "Blur":
             self.blur_scale = noise_args
-        elif  noise_type == 'Noise':
+        elif noise_type == "Noise":
             self.noise_scale = noise_args
 
     def degrade(self, img_gt):
-        
 
         # ------------------------ generate lq image ------------------------ #
-        if self.noise_type == 'Resize':
-        # downsample
-            w,h = img_gt.shape[0],img_gt.shape[1]
-            img_lq = cv2.resize(img_gt, (int(w // self.downsample_scale), int(h // self.downsample_scale)), interpolation=cv2.INTER_LINEAR)
+        if self.noise_type == "Resize":
+            # downsample
+            w, h = img_gt.shape[0], img_gt.shape[1]
+            img_lq = cv2.resize(
+                img_gt,
+                (int(w // self.downsample_scale), int(h // self.downsample_scale)),
+                interpolation=cv2.INTER_LINEAR,
+            )
             # resize to original size
             img_lq = cv2.resize(img_lq, (w, h), interpolation=cv2.INTER_LINEAR)
-        elif  self.noise_type == 'JPEG':
+        elif self.noise_type == "JPEG":
             img_lq = img_gt
             img_lq = degradations.add_jpg_compression(img_lq, self.jpeg_quality)
-        elif  self.noise_type == 'Blur':
-            kernel = degradations.bivariate_Gaussian(3, self.blur_scale, self.blur_scale, 0)
+        elif self.noise_type == "Blur":
+            kernel = degradations.bivariate_Gaussian(
+                3, self.blur_scale, self.blur_scale, 0
+            )
             img_lq = cv2.filter2D(img_gt, -1, kernel)
-        elif  self.noise_type == 'Noise':
+        elif self.noise_type == "Noise":
             img_lq = degradations.add_gaussian_noise(img_gt, self.noise_scale)
 
         # BGR to RGB, HWC to CHW, numpy to tensor
         img_gt, img_lq = img2tensor([img_gt, img_lq], bgr2rgb=True, float32=True)
 
         # round and clip
-        img_lq = torch.clamp((img_lq * 255.0).round(), 0, 255) / 255.
+        img_lq = torch.clamp((img_lq * 255.0).round(), 0, 255) / 255.0
 
         # normalize
         # normalize(img_gt, self.mean, self.std, inplace=True)
         normalize(img_lq, 0.5, 0.5, inplace=True)
-        
-        return img_lq
 
+        return img_lq

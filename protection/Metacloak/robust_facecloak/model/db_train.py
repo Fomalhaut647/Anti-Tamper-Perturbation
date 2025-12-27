@@ -2,7 +2,7 @@
 # Copyright (c) 2023 Yixin Liu Lehigh University
 # All rights reserved.
 #
-# This file is part of the MetaCloak project. Please cite our paper if our codebase contribute to your project. 
+# This file is part of the MetaCloak project. Please cite our paper if our codebase contribute to your project.
 # -----------------------------------------------------------------------
 
 import torch
@@ -14,12 +14,13 @@ from PIL import Image
 from torchvision import transforms
 from torch.utils.data import Dataset
 
-   
 
 from transformers import AutoTokenizer, PretrainedConfig
 
 
-def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
+def import_model_class_from_model_name_or_path(
+    pretrained_model_name_or_path: str, revision: str
+):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path,
         subfolder="text_encoder",
@@ -32,7 +33,9 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
 
         return CLIPTextModel
     elif model_class == "RobertaSeriesModelWithTransformation":
-        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import RobertaSeriesModelWithTransformation
+        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
+            RobertaSeriesModelWithTransformation,
+        )
 
         return RobertaSeriesModelWithTransformation
     else:
@@ -51,7 +54,7 @@ class DreamBoothDatasetFromTensor(Dataset):
         class_prompt=None,
         size=512,
         center_crop=False,
-        shuffle = True,
+        shuffle=True,
     ):
         self.size = size
         self.center_crop = center_crop
@@ -59,7 +62,9 @@ class DreamBoothDatasetFromTensor(Dataset):
 
         self.instance_images_tensor = instance_images_tensor
         if shuffle:
-            self.instance_images_tensor = self.instance_images_tensor[torch.randperm(len(self.instance_images_tensor))]
+            self.instance_images_tensor = self.instance_images_tensor[
+                torch.randperm(len(self.instance_images_tensor))
+            ]
         self.num_instance_images = len(self.instance_images_tensor)
         self.instance_prompt = instance_prompt
         self._length = self.num_instance_images
@@ -76,8 +81,12 @@ class DreamBoothDatasetFromTensor(Dataset):
 
         self.image_transforms = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.Resize(
+                    size, interpolation=transforms.InterpolationMode.BILINEAR
+                ),
+                transforms.CenterCrop(size)
+                if center_crop
+                else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
             ]
@@ -99,7 +108,9 @@ class DreamBoothDatasetFromTensor(Dataset):
         ).input_ids
 
         if self.class_data_root:
-            class_image = Image.open(self.class_images_path[index % self.num_class_images])
+            class_image = Image.open(
+                self.class_images_path[index % self.num_class_images]
+            )
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
@@ -149,7 +160,7 @@ def train_few_step(
         args.center_crop,
         shuffle,
     )
-    
+
     # how to shuffle dataset?
 
     weight_dtype = torch.bfloat16
@@ -164,10 +175,12 @@ def train_few_step(
         text_encoder.train()
 
         step_data = train_dataset[step % len(train_dataset)]
-        pixel_values = torch.stack([step_data["instance_images"], step_data["class_images"]]).to(
-            device, dtype=weight_dtype
-        )
-        input_ids = torch.cat([step_data["instance_prompt_ids"], step_data["class_prompt_ids"]], dim=0).to(device)
+        pixel_values = torch.stack(
+            [step_data["instance_images"], step_data["class_images"]]
+        ).to(device, dtype=weight_dtype)
+        input_ids = torch.cat(
+            [step_data["instance_prompt_ids"], step_data["class_prompt_ids"]], dim=0
+        ).to(device)
 
         latents = vae.encode(pixel_values).latent_dist.sample()
         latents = latents * vae.config.scaling_factor
@@ -176,7 +189,9 @@ def train_few_step(
         noise = torch.randn_like(latents)
         bsz = latents.shape[0]
         # Sample a random timestep for each image
-        timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+        timesteps = torch.randint(
+            0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device
+        )
         timesteps = timesteps.long()
 
         # Add noise to the latents according to the noise magnitude at each timestep
@@ -185,10 +200,13 @@ def train_few_step(
 
         # Get the text embedding for conditioning
         encoder_hidden_states = text_encoder(input_ids)[0]
-        
+
         # if robust_instance_conditioning_vector in args, use it as the conditioning vector
-        
-        if "robust_instance_conditioning_vector" in vars(args).keys() and args.robust_instance_conditioning_vector:
+
+        if (
+            "robust_instance_conditioning_vector" in vars(args).keys()
+            and args.robust_instance_conditioning_vector
+        ):
             condition_vector = args.robust_instance_conditioning_vector_data
             encoder_hidden_states[0] = condition_vector.to(device, dtype=weight_dtype)
 
@@ -201,7 +219,9 @@ def train_few_step(
         elif noise_scheduler.config.prediction_type == "v_prediction":
             target = noise_scheduler.get_velocity(latents, noise, timesteps)
         else:
-            raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+            raise ValueError(
+                f"Unknown prediction type {noise_scheduler.config.prediction_type}"
+            )
 
         # with prior preservation loss
         if args.with_prior_preservation:
@@ -209,10 +229,14 @@ def train_few_step(
             target, target_prior = torch.chunk(target, 2, dim=0)
 
             # Compute instance loss
-            instance_loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+            instance_loss = F.mse_loss(
+                model_pred.float(), target.float(), reduction="mean"
+            )
 
             # Compute prior loss
-            prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
+            prior_loss = F.mse_loss(
+                model_pred_prior.float(), target_prior.float(), reduction="mean"
+            )
 
             # Add the prior loss to the instance loss.
             loss = instance_loss + args.prior_loss_weight * prior_loss
@@ -229,4 +253,3 @@ def train_few_step(
         # )
 
     return [unet, text_encoder]
-

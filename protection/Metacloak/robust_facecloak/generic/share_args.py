@@ -1,32 +1,29 @@
 import argparse
 
+
 def share_parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
-    
-   
 
-    
-    
     parser.add_argument(
         "--advance_steps",
         type=int,
         default=10,
         help="Step size for the advancing direction for meta-learning.",
     )
-    
+
     parser.add_argument(
         "--target_weight",
         type=float,
         default=1,
         help="The weight for target loss.",
     )
-    
+
     parser.add_argument(
-        "--device", 
+        "--device",
         type=int,
         default=2,
     )
-    
+
     parser.add_argument(
         "--exp_name",
         type=str,
@@ -34,12 +31,12 @@ def share_parse_args():
         help="The name of the experiment to be logged.",
     )
     parser.add_argument(
-        "--exp_hyper", 
+        "--exp_hyper",
         type=str,
         default="exp_hyper",
         help="The hyperparameters of the experiment to be logged.",
     )
-    
+
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
@@ -110,7 +107,9 @@ def share_parse_args():
         default="text-inversion-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
-    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
+    parser.add_argument(
+        "--seed", type=int, default=None, help="A seed for reproducible training."
+    )
     parser.add_argument(
         "--resolution",
         type=int,
@@ -152,7 +151,7 @@ def share_parse_args():
         default=20,
         help="Total number of training steps to perform.",
     )
-    
+
     parser.add_argument(
         "--checkpointing_iterations",
         type=int,
@@ -209,10 +208,7 @@ def share_parse_args():
     )
 
     parser.add_argument(
-        "--wandb_entity_name", 
-        type=str,
-        default="momo",
-        help="The wandb entity name."
+        "--wandb_entity_name", type=str, default="momo", help="The wandb entity name."
     )
 
     return parser
@@ -223,15 +219,16 @@ def add_train_db(parser):
         "--clean_ref_db",
         type=str,
         default=None,
-        help="The path to the clean reference database.",)
+        help="The path to the clean reference database.",
+    )
     parser.add_argument(
-        "--wandb_project_name", 
+        "--wandb_project_name",
         type=str,
         default="metacloak",
-        help="The wandb project name."
+        help="The wandb project name.",
     )
     # parser.add_argument(
-    #     "--wandb_entity_name", 
+    #     "--wandb_entity_name",
     #     type=str,
     #     default="momo",
     #     help="The wandb entity name."
@@ -332,14 +329,18 @@ def add_train_db(parser):
         default=0.999,
         help="The beta2 parameter for the Adam optimizer.",
     )
-    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
+    parser.add_argument(
+        "--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use."
+    )
     parser.add_argument(
         "--adam_epsilon",
         type=float,
         default=1e-08,
         help="Epsilon value for the Adam optimizer",
     )
-    parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
+    parser.add_argument(
+        "--max_grad_norm", default=1.0, type=float, help="Max gradient norm."
+    )
     parser.add_argument(
         "--push_to_hub",
         action="store_true",
