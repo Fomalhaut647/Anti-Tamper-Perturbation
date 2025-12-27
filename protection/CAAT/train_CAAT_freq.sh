@@ -15,4 +15,5 @@ accelerate launch CAAT.py \
   --mixed_precision bf16  \
   --alpha=5e-3  \
   --eps=0.05 \
-  --input-config $3
+  --input-config $3 \
+  --faster_pgd=True

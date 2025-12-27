@@ -554,6 +554,12 @@ def parse_args(input_args=None):
         default=None,
         type=str,
     )
+    parser.add_argument(
+        "--faster_pgd",
+        default=False,
+        type=bool,
+        help="Whether to use PGD where dct is calculated only once.",
+    )
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
@@ -1078,6 +1084,28 @@ def main(args):
                     eta = torch.clamp(adv_images - original_images, min=-eps, max=+eps)
                     pertubed_images = torch.clamp(
                         original_images + eta, min=-1, max=+1
+                    ).detach_()
+                elif args.faster_pgd:
+                    def zero_low_frequencies(x):
+                        x_dct = dct_img(x)
+                        x_dct *= random_mask
+                        return float(config["CAAT"]["step_size"]) * x_dct.sign()
+                    
+                    grad_dct = zero_low_frequencies(pertubed_images.grad)
+                    pertubed_images_dct = dct_img(pertubed_images)
+                    original_images_dct = pertubed_images_dct.clone().detach()
+                    original_images_dct.requires_grad_(False)
+                    adv_images_dct = pertubed_images_dct + grad_dct
+
+                    eps = float(config["CAAT"]["radius"])
+                    eta = (
+                        torch.clamp(
+                            adv_images_dct - original_images_dct, min=-eps, max=+eps
+                        )
+                        * random_mask
+                    )
+                    pertubed_images = torch.clamp(
+                        idct_img(original_images_dct + eta), min=-1, max=+1
                     ).detach_()
                 else:
                     # pertubed_images = pertubed_images.to(accelerator.device)
